@@ -130,7 +130,7 @@ static void discordInit()
     handlers.joinGame = handleDiscordJoin;
     handlers.spectateGame = handleDiscordSpectate;
     handlers.joinRequest = handleDiscordJoinRequest;
-    Discord_Initialize(APPLICATION_ID, &handlers, 1, NULL);
+    Discord_Initialize(APPLICATION_ID, &handlers);
 }
 
 static void gameLoop()

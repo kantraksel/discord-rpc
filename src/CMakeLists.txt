@@ -9,7 +9,6 @@ set(CMAKE_CXX_STANDARD 14)
 set(BASE_RPC_SRC
     ${PROJECT_SOURCE_DIR}/include/discord_rpc.h
     discord_rpc.cpp
-    ${PROJECT_SOURCE_DIR}/include/discord_register.h
     rpc_connection.h
     rpc_connection.cpp
     serialization.h
@@ -27,7 +26,7 @@ endif(${BUILD_SHARED_LIBS})
 
 if(WIN32)
     add_definitions(-DDISCORD_WINDOWS)
-    set(BASE_RPC_SRC ${BASE_RPC_SRC} connection_win.cpp discord_register_win.cpp)
+    set(BASE_RPC_SRC ${BASE_RPC_SRC} connection_win.cpp)
     add_library(discord-rpc ${BASE_RPC_SRC})
     if (MSVC)
         if(USE_STATIC_CRT)
@@ -64,10 +63,8 @@ if(UNIX)
 
     if (APPLE)
         add_definitions(-DDISCORD_OSX)
-        set(BASE_RPC_SRC ${BASE_RPC_SRC} discord_register_osx.m)
     else (APPLE)
         add_definitions(-DDISCORD_LINUX)
-        set(BASE_RPC_SRC ${BASE_RPC_SRC} discord_register_linux.cpp)
     endif(APPLE)
 
     add_library(discord-rpc ${BASE_RPC_SRC})
@@ -142,6 +139,5 @@ install(
 install(
     FILES
         "../include/discord_rpc.h"
-		"../include/discord_register.h"
     DESTINATION "include"
 )
