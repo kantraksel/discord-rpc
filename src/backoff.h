@@ -20,7 +20,7 @@ struct Backoff
       , maxAmount(max)
       , current(min)
       , fails(0)
-      , randGenerator(std::random_device())
+      , randGenerator(std::random_device()())
     {
     }
 
