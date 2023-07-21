@@ -6,21 +6,20 @@
 // a consumer. Mutex up as needed.
 
 template <typename ElementType, size_t QueueSize>
-class MsgQueue {
+class MsgQueue
+{
     ElementType queue_[QueueSize];
     std::atomic_uint nextAdd_{0};
     std::atomic_uint nextSend_{0};
     std::atomic_uint pendingSends_{0};
 
 public:
-    MsgQueue() {}
-
     ElementType* GetNextAddMessage()
     {
         // if we are falling behind, bail
-        if (pendingSends_.load() >= QueueSize) {
+        if (pendingSends_.load() >= QueueSize)
             return nullptr;
-        }
+
         auto index = (nextAdd_++) % QueueSize;
         return &queue_[index];
     }

@@ -24,12 +24,13 @@
 template <size_t Len>
 inline size_t StringCopy(char (&dest)[Len], const char* src)
 {
-    if (!src || !Len) {
+    if (!src || !Len)
         return 0;
-    }
+
     size_t copied;
     char* out = dest;
-    for (copied = 1; *src && copied < Len; ++copied) {
+    for (copied = 1; *src && copied < Len; ++copied)
+    {
         *out++ = *src++;
     }
     *out = 0;
@@ -54,7 +55,8 @@ size_t JsonWriteJoinReply(char* dest, size_t maxLen, const char* userId, int rep
 // I want to use as few allocations as I can get away with, and to do that with RapidJson, you need
 // to supply some of your own allocators for stuff rather than use the defaults
 
-class LinearAllocator {
+class LinearAllocator
+{
 public:
     char* buffer_;
     char* end_;
@@ -72,7 +74,8 @@ public:
     {
         char* res = buffer_;
         buffer_ += size;
-        if (buffer_ > end_) {
+        if (buffer_ > end_)
+        {
             buffer_ = res;
             return nullptr;
         }
@@ -80,9 +83,9 @@ public:
     }
     void* Realloc(void* originalPtr, size_t originalSize, size_t newSize)
     {
-        if (newSize == 0) {
+        if (newSize == 0)
             return nullptr;
-        }
+
         // allocate how much you need in the first place
         assert(!originalPtr && !originalSize);
         // unused parameter warning
@@ -98,7 +101,8 @@ public:
 };
 
 template <size_t Size>
-class FixedLinearAllocator : public LinearAllocator {
+class FixedLinearAllocator : public LinearAllocator
+{
 public:
     char fixedBuffer_[Size];
     FixedLinearAllocator()
@@ -109,7 +113,8 @@ public:
 };
 
 // wonder why this isn't a thing already, maybe I missed it
-class DirectStringBuffer {
+class DirectStringBuffer
+{
 public:
     using Ch = char;
     char* buffer_;
@@ -125,9 +130,8 @@ public:
 
     void Put(char c)
     {
-        if (current_ < end_) {
+        if (current_ < end_)
             *current_++ = c;
-        }
     }
     void Flush() {}
     size_t GetSize() const { return (size_t)(current_ - buffer_); }
@@ -141,7 +145,8 @@ using StackAllocator = FixedLinearAllocator<2048>;
 constexpr size_t WriterNestingLevels = 2048 / (2 * sizeof(size_t));
 using JsonWriterBase =
   rapidjson::Writer<DirectStringBuffer, UTF8, UTF8, StackAllocator, rapidjson::kWriteNoFlags>;
-class JsonWriter : public JsonWriterBase {
+class JsonWriter : public JsonWriterBase
+{
 public:
     DirectStringBuffer stringBuffer_;
     StackAllocator stackAlloc_;
@@ -157,7 +162,8 @@ public:
 };
 
 using JsonDocumentBase = rapidjson::GenericDocument<UTF8, PoolAllocator, StackAllocator>;
-class JsonDocument : public JsonDocumentBase {
+class JsonDocument : public JsonDocumentBase
+{
 public:
     static const int kDefaultChunkCapacity = 32 * 1024;
     // json parser will use this buffer first, then allocate more if needed; I seriously doubt we
@@ -181,22 +187,22 @@ using JsonValue = rapidjson::GenericValue<UTF8, PoolAllocator>;
 
 inline JsonValue* GetObjMember(JsonValue* obj, const char* name)
 {
-    if (obj) {
+    if (obj)
+    {
         auto member = obj->FindMember(name);
-        if (member != obj->MemberEnd() && member->value.IsObject()) {
+        if (member != obj->MemberEnd() && member->value.IsObject())
             return &member->value;
-        }
     }
     return nullptr;
 }
 
 inline int GetIntMember(JsonValue* obj, const char* name, int notFoundDefault = 0)
 {
-    if (obj) {
+    if (obj)
+    {
         auto member = obj->FindMember(name);
-        if (member != obj->MemberEnd() && member->value.IsInt()) {
+        if (member != obj->MemberEnd() && member->value.IsInt())
             return member->value.GetInt();
-        }
     }
     return notFoundDefault;
 }
@@ -205,11 +211,11 @@ inline const char* GetStrMember(JsonValue* obj,
                                 const char* name,
                                 const char* notFoundDefault = nullptr)
 {
-    if (obj) {
+    if (obj)
+    {
         auto member = obj->FindMember(name);
-        if (member != obj->MemberEnd() && member->value.IsString()) {
+        if (member != obj->MemberEnd() && member->value.IsString())
             return member->value.GetString();
-        }
     }
     return notFoundDefault;
 }

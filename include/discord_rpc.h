@@ -23,7 +23,8 @@
 extern "C" {
 #endif
 
-typedef struct DiscordRichPresence {
+struct DiscordRichPresence
+{
     const char* state;   /* max 128 bytes */
     const char* details; /* max 128 bytes */
     int64_t startTimestamp;
@@ -40,23 +41,25 @@ typedef struct DiscordRichPresence {
     const char* joinSecret;     /* max 128 bytes */
     const char* spectateSecret; /* max 128 bytes */
     int8_t instance;
-} DiscordRichPresence;
+};
 
-typedef struct DiscordUser {
+struct DiscordUser
+{
     const char* userId;
     const char* username;
     const char* discriminator;
     const char* avatar;
-} DiscordUser;
+};
 
-typedef struct DiscordEventHandlers {
+struct DiscordEventHandlers
+{
     void (*ready)(const DiscordUser* request);
     void (*disconnected)(int errorCode, const char* message);
     void (*errored)(int errorCode, const char* message);
     void (*joinGame)(const char* joinSecret);
     void (*spectateGame)(const char* spectateSecret);
     void (*joinRequest)(const DiscordUser* request);
-} DiscordEventHandlers;
+};
 
 #define DISCORD_REPLY_NO 0
 #define DISCORD_REPLY_YES 1

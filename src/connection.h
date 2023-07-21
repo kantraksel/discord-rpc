@@ -8,7 +8,8 @@
 // not really connectiony, but need per-platform
 int GetProcessId();
 
-struct BaseConnection {
+struct BaseConnection
+{
     static BaseConnection* Create();
     static void Destroy(BaseConnection*&);
     bool isOpen{false};

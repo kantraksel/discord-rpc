@@ -14,7 +14,8 @@ int GetProcessId()
     return ::getpid();
 }
 
-struct BaseConnectionUnix : public BaseConnection {
+struct BaseConnectionUnix : public BaseConnection
+{
     int sock{-1};
 };
 
@@ -54,20 +55,21 @@ bool BaseConnection::Open()
     const char* tempPath = GetTempPath();
     auto self = reinterpret_cast<BaseConnectionUnix*>(this);
     self->sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (self->sock == -1) {
+    if (self->sock == -1)
         return false;
-    }
+
     fcntl(self->sock, F_SETFL, O_NONBLOCK);
 #ifdef SO_NOSIGPIPE
     int optval = 1;
     setsockopt(self->sock, SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval));
 #endif
 
-    for (int pipeNum = 0; pipeNum < 10; ++pipeNum) {
-        snprintf(
-          PipeAddr.sun_path, sizeof(PipeAddr.sun_path), "%s/discord-ipc-%d", tempPath, pipeNum);
+    for (int pipeNum = 0; pipeNum < 10; ++pipeNum)
+    {
+        snprintf(PipeAddr.sun_path, sizeof(PipeAddr.sun_path), "%s/discord-ipc-%d", tempPath, pipeNum);
         int err = connect(self->sock, (const sockaddr*)&PipeAddr, sizeof(PipeAddr));
-        if (err == 0) {
+        if (err == 0)
+        {
             self->isOpen = true;
             return true;
         }
@@ -79,9 +81,9 @@ bool BaseConnection::Open()
 bool BaseConnection::Close()
 {
     auto self = reinterpret_cast<BaseConnectionUnix*>(this);
-    if (self->sock == -1) {
+    if (self->sock == -1)
         return false;
-    }
+
     close(self->sock);
     self->sock = -1;
     self->isOpen = false;
@@ -92,14 +94,13 @@ bool BaseConnection::Write(const void* data, size_t length)
 {
     auto self = reinterpret_cast<BaseConnectionUnix*>(this);
 
-    if (self->sock == -1) {
+    if (self->sock == -1)
         return false;
-    }
 
     ssize_t sentBytes = send(self->sock, data, length, MsgFlags);
-    if (sentBytes < 0) {
+    if (sentBytes < 0)
         Close();
-    }
+
     return sentBytes == (ssize_t)length;
 }
 
@@ -107,19 +108,18 @@ bool BaseConnection::Read(void* data, size_t length)
 {
     auto self = reinterpret_cast<BaseConnectionUnix*>(this);
 
-    if (self->sock == -1) {
+    if (self->sock == -1)
         return false;
-    }
 
     int res = (int)recv(self->sock, data, length, MsgFlags);
-    if (res < 0) {
-        if (errno == EAGAIN) {
+    if (res < 0)
+    {
+        if (errno == EAGAIN)
             return false;
-        }
         Close();
     }
-    else if (res == 0) {
+    else if (res == 0)
         Close();
-    }
+
     return res == (int)length;
 }
