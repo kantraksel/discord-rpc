@@ -3,17 +3,17 @@
 
 #include <atomic>
 
-static const int RpcVersion = 1;
+constexpr int RpcVersion = 1;
 static RpcConnection Instance;
 
-/*static*/ RpcConnection* RpcConnection::Create(const char* applicationId)
+RpcConnection* RpcConnection::Create(const char* applicationId)
 {
     Instance.connection = BaseConnection::Create();
     StringCopy(Instance.appId, applicationId);
     return &Instance;
 }
 
-/*static*/ void RpcConnection::Destroy(RpcConnection*& c)
+void RpcConnection::Destroy(RpcConnection*& c)
 {
     c->Close();
     BaseConnection::Destroy(c->connection);
@@ -45,11 +45,10 @@ void RpcConnection::Open()
     }
     else
     {
-        sendFrame.opcode = Opcode::Handshake;
-        sendFrame.length = (uint32_t)JsonWriteHandshakeObj(
-          sendFrame.message, sizeof(sendFrame.message), RpcVersion, appId);
+        frame.opcode = Opcode::Handshake;
+        frame.length = (uint32_t)JsonWriteHandshakeObj(frame.message, sizeof(frame.message), RpcVersion, appId);
 
-        if (connection->Write(&sendFrame, sizeof(MessageFrameHeader) + sendFrame.length))
+        if (connection->Write(&frame, sizeof(MessageFrameHeader) + frame.length))
             state = State::SentHandshake;
         else Close();
     }
@@ -57,7 +56,7 @@ void RpcConnection::Open()
 
 void RpcConnection::Close()
 {
-    if (onDisconnect && (state == State::Connected || state == State::SentHandshake))
+    if (onDisconnect && state != State::Disconnected)
         onDisconnect(lastErrorCode, lastErrorMessage);
 
     connection->Close();
@@ -66,10 +65,14 @@ void RpcConnection::Close()
 
 bool RpcConnection::Write(const void* data, size_t length)
 {
-    sendFrame.opcode = Opcode::Frame;
-    memcpy(sendFrame.message, data, length);
-    sendFrame.length = (uint32_t)length;
-    if (!connection->Write(&sendFrame, sizeof(MessageFrameHeader) + length))
+    if (length > sizeof(frame.message))
+        return false;
+
+    frame.opcode = Opcode::Frame;
+    frame.length = (uint32_t)length;
+    memcpy(frame.message, data, length);
+    
+    if (!connection->Write(&frame, sizeof(MessageFrameHeader) + length))
     {
         Close();
         return false;
@@ -79,14 +82,12 @@ bool RpcConnection::Write(const void* data, size_t length)
 
 bool RpcConnection::Read(JsonDocument& message)
 {
-    if (state != State::Connected && state != State::SentHandshake)
+    if (state == State::Disconnected)
         return false;
 
-    MessageFrame readFrame;
     for (;;)
     {
-        bool didRead = connection->Read(&readFrame, sizeof(MessageFrameHeader));
-        if (!didRead)
+        if (!connection->Read(&frame, sizeof(MessageFrameHeader)))
         {
             if (!connection->isOpen)
             {
@@ -97,39 +98,42 @@ bool RpcConnection::Read(JsonDocument& message)
             return false;
         }
 
-        if (readFrame.length > 0)
+        if (frame.length > 0)
         {
-            didRead = connection->Read(readFrame.message, readFrame.length);
-            if (!didRead)
+            if (!connection->Read(frame.message, frame.length))
             {
                 lastErrorCode = (int)ErrorCode::ReadCorrupt;
                 StringCopy(lastErrorMessage, "Partial data in frame");
                 Close();
                 return false;
             }
-            readFrame.message[readFrame.length] = 0;
+            frame.message[frame.length] = 0;
         }
 
-        switch (readFrame.opcode)
+        switch (frame.opcode)
         {
         case Opcode::Close:
         {
-            message.ParseInsitu(readFrame.message);
+            message.ParseInsitu(frame.message);
             lastErrorCode = GetIntMember(&message, "code");
             StringCopy(lastErrorMessage, GetStrMember(&message, "message", ""));
             Close();
             return false;
         }
+
         case Opcode::Frame:
-            message.ParseInsitu(readFrame.message);
+            message.ParseInsitu(frame.message);
             return true;
+
         case Opcode::Ping:
-            readFrame.opcode = Opcode::Pong;
-            if (!connection->Write(&readFrame, sizeof(MessageFrameHeader) + readFrame.length))
+            frame.opcode = Opcode::Pong;
+            if (!connection->Write(&frame, sizeof(MessageFrameHeader) + frame.length))
                 Close();
             break;
+
         case Opcode::Pong:
             break;
+
         case Opcode::Handshake:
         default:
             // something bad happened

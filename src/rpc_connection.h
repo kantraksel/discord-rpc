@@ -7,7 +7,7 @@
 // smaller.
 constexpr size_t MaxRpcFrameSize = 64 * 1024;
 
-struct RpcConnection
+class RpcConnection
 {
     enum class ErrorCode : int
     {
@@ -40,18 +40,19 @@ struct RpcConnection
     {
         Disconnected,
         SentHandshake,
-        AwaitingResponse,
         Connected,
     };
 
     BaseConnection* connection{nullptr};
     State state{State::Disconnected};
-    void (*onConnect)(JsonDocument& message){nullptr};
-    void (*onDisconnect)(int errorCode, const char* message){nullptr};
     char appId[64]{};
     int lastErrorCode{0};
     char lastErrorMessage[256]{};
-    RpcConnection::MessageFrame sendFrame;
+    MessageFrame frame;
+
+public:
+    void (*onConnect)(JsonDocument& message){nullptr};
+    void (*onDisconnect)(int errorCode, const char* message){nullptr};
 
     static RpcConnection* Create(const char* applicationId);
     static void Destroy(RpcConnection*&);

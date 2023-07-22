@@ -43,7 +43,7 @@ bool ConnectionWin::Open()
 	wchar_t pipeName[]{L"\\\\?\\pipe\\discord-ipc-0"};
 	wchar_t* pipeDigit = pipeName + (sizeof(pipeName) / sizeof(wchar_t)) - 2;
 
-	for (char d = '0'; d != '9';)
+	for (char d = '0'; d <= '9';)
 	{
 		*pipeDigit = d;
 		pipe = CreateFileW(pipeName, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -65,6 +65,8 @@ bool ConnectionWin::Open()
 
 		return false;
 	}
+
+	return false;
 }
 
 bool ConnectionWin::Close()
