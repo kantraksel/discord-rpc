@@ -14,12 +14,20 @@ int GetProcessId()
     return ::getpid();
 }
 
-struct BaseConnectionUnix : public BaseConnection
+struct ConnectionUnix : public BaseConnection
 {
     int sock{-1};
+
+    bool Open() override;
+    bool Close() override;
+
+    bool Write(const void* data, size_t length) override;
+    bool Read(void* data, size_t length) override;
+
+    ~ConnectionUnix() {}
 };
 
-static BaseConnectionUnix Connection;
+static ConnectionUnix Connection;
 static sockaddr_un PipeAddr{};
 #ifdef MSG_NOSIGNAL
 static int MsgFlags = MSG_NOSIGNAL;
@@ -37,85 +45,79 @@ static const char* GetTempPath()
     return temp;
 }
 
-/*static*/ BaseConnection* BaseConnection::Create()
+BaseConnection* BaseConnection::Create()
 {
     PipeAddr.sun_family = AF_UNIX;
     return &Connection;
 }
 
-/*static*/ void BaseConnection::Destroy(BaseConnection*& c)
+void BaseConnection::Destroy(BaseConnection*& c)
 {
-    auto self = reinterpret_cast<BaseConnectionUnix*>(c);
-    self->Close();
+    c->Close();
     c = nullptr;
 }
 
-bool BaseConnection::Open()
+bool ConnectionUnix::Open()
 {
     const char* tempPath = GetTempPath();
-    auto self = reinterpret_cast<BaseConnectionUnix*>(this);
-    self->sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (self->sock == -1)
+    sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sock == -1)
         return false;
 
-    fcntl(self->sock, F_SETFL, O_NONBLOCK);
+    fcntl(sock, F_SETFL, O_NONBLOCK);
 #ifdef SO_NOSIGPIPE
     int optval = 1;
-    setsockopt(self->sock, SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval));
+    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval));
 #endif
 
     for (int pipeNum = 0; pipeNum < 10; ++pipeNum)
     {
         snprintf(PipeAddr.sun_path, sizeof(PipeAddr.sun_path), "%s/discord-ipc-%d", tempPath, pipeNum);
-        int err = connect(self->sock, (const sockaddr*)&PipeAddr, sizeof(PipeAddr));
+        int err = connect(sock, (const sockaddr*)&PipeAddr, sizeof(PipeAddr));
         if (err == 0)
         {
-            self->isOpen = true;
+            isOpen = true;
             return true;
         }
     }
-    self->Close();
+    Close();
     return false;
 }
 
-bool BaseConnection::Close()
+bool ConnectionUnix::Close()
 {
-    auto self = reinterpret_cast<BaseConnectionUnix*>(this);
-    if (self->sock == -1)
+    if (sock == -1)
         return false;
 
-    close(self->sock);
-    self->sock = -1;
-    self->isOpen = false;
+    close(sock);
+    sock = -1;
+    isOpen = false;
     return true;
 }
 
-bool BaseConnection::Write(const void* data, size_t length)
+bool ConnectionUnix::Write(const void* data, size_t length)
 {
-    auto self = reinterpret_cast<BaseConnectionUnix*>(this);
-
-    if (self->sock == -1)
+    if (sock == -1)
         return false;
 
-    ssize_t sentBytes = send(self->sock, data, length, MsgFlags);
+    ssize_t sentBytes = send(sock, data, length, MsgFlags);
     if (sentBytes < 0)
         Close();
 
     return sentBytes == (ssize_t)length;
 }
 
-bool BaseConnection::Read(void* data, size_t length)
+bool ConnectionUnix::Read(void* data, size_t length)
 {
-    auto self = reinterpret_cast<BaseConnectionUnix*>(this);
-
-    if (self->sock == -1)
+    if (sock == -1)
         return false;
 
-    int res = (int)recv(self->sock, data, length, MsgFlags);
+    int res = (int)recv(sock, data, length, MsgFlags);
     if (res < 0)
     {
         if (errno == EAGAIN)
             return false;
+
         Close();
     }
     else if (res == 0)
