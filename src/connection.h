@@ -7,16 +7,19 @@ int GetProcessId();
 
 struct BaseConnection
 {
-	static BaseConnection* Create();
-	static void Destroy(BaseConnection*&);
+	union
+	{
+		void* pipe; //Win
+		int sock; //Unix
+	};
+
+	BaseConnection();
+	~BaseConnection();
 
 	bool isOpen{false};
-	virtual bool Open() = 0;
-	virtual bool Close() = 0;
+	bool Open();
+	void Close();
 
-	virtual bool Write(const void* data, size_t length) = 0;
-	virtual bool Read(void* data, size_t length) = 0;
-
-protected:
-	virtual ~BaseConnection() {}
+	virtual bool Write(const void* data, size_t length);
+	bool Read(void* data, size_t length);
 };

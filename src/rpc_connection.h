@@ -43,7 +43,7 @@ class RpcConnection
         Connected,
     };
 
-    BaseConnection* connection{nullptr};
+    BaseConnection connection;
     State state{State::Disconnected};
     char appId[64]{};
     int lastErrorCode{0};

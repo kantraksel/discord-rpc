@@ -8,7 +8,6 @@ static RpcConnection Instance;
 
 RpcConnection* RpcConnection::Create(const char* applicationId)
 {
-    Instance.connection = BaseConnection::Create();
     StringCopy(Instance.appId, applicationId);
     return &Instance;
 }
@@ -16,7 +15,6 @@ RpcConnection* RpcConnection::Create(const char* applicationId)
 void RpcConnection::Destroy(RpcConnection*& c)
 {
     c->Close();
-    BaseConnection::Destroy(c->connection);
     c = nullptr;
 }
 
@@ -25,7 +23,7 @@ void RpcConnection::Open()
     if (state == State::Connected)
         return;
 
-    if (state == State::Disconnected && !connection->Open())
+    if (state == State::Disconnected && !connection.Open())
         return;
 
     if (state == State::SentHandshake)
@@ -48,7 +46,7 @@ void RpcConnection::Open()
         frame.opcode = Opcode::Handshake;
         frame.length = (uint32_t)JsonWriteHandshakeObj(frame.message, sizeof(frame.message), RpcVersion, appId);
 
-        if (connection->Write(&frame, sizeof(MessageFrameHeader) + frame.length))
+        if (connection.Write(&frame, sizeof(MessageFrameHeader) + frame.length))
             state = State::SentHandshake;
         else Close();
     }
@@ -59,7 +57,7 @@ void RpcConnection::Close()
     if (onDisconnect && state != State::Disconnected)
         onDisconnect(lastErrorCode, lastErrorMessage);
 
-    connection->Close();
+    connection.Close();
     state = State::Disconnected;
 }
 
@@ -72,7 +70,7 @@ bool RpcConnection::Write(const void* data, size_t length)
     frame.length = (uint32_t)length;
     memcpy(frame.message, data, length);
     
-    if (!connection->Write(&frame, sizeof(MessageFrameHeader) + length))
+    if (!connection.Write(&frame, sizeof(MessageFrameHeader) + length))
     {
         Close();
         return false;
@@ -87,9 +85,9 @@ bool RpcConnection::Read(JsonDocument& message)
 
     for (;;)
     {
-        if (!connection->Read(&frame, sizeof(MessageFrameHeader)))
+        if (!connection.Read(&frame, sizeof(MessageFrameHeader)))
         {
-            if (!connection->isOpen)
+            if (!connection.isOpen)
             {
                 lastErrorCode = (int)ErrorCode::PipeClosed;
                 StringCopy(lastErrorMessage, "Pipe closed");
@@ -100,7 +98,7 @@ bool RpcConnection::Read(JsonDocument& message)
 
         if (frame.length > 0)
         {
-            if (!connection->Read(frame.message, frame.length))
+            if (!connection.Read(frame.message, frame.length))
             {
                 lastErrorCode = (int)ErrorCode::ReadCorrupt;
                 StringCopy(lastErrorMessage, "Partial data in frame");
@@ -127,7 +125,7 @@ bool RpcConnection::Read(JsonDocument& message)
 
         case Opcode::Ping:
             frame.opcode = Opcode::Pong;
-            if (!connection->Write(&frame, sizeof(MessageFrameHeader) + frame.length))
+            if (!connection.Write(&frame, sizeof(MessageFrameHeader) + frame.length))
                 Close();
             break;
 

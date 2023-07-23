@@ -12,40 +12,23 @@ int GetProcessId()
 	return (int)GetCurrentProcessId();
 }
 
-struct ConnectionWin : public BaseConnection
+BaseConnection::BaseConnection()
 {
-	HANDLE pipe{INVALID_HANDLE_VALUE};
-
-	bool Open() override;
-	bool Close() override;
-
-	bool Write(const void* data, size_t length) override;
-	bool Read(void* data, size_t length) override;
-
-	~ConnectionWin() {}
-};
-
-static ConnectionWin Connection;
-
-BaseConnection* BaseConnection::Create()
-{
-	return &Connection;
+	pipe = INVALID_HANDLE_VALUE;
 }
 
-void BaseConnection::Destroy(BaseConnection*& c)
+BaseConnection::~BaseConnection()
 {
-	c->Close();
-	c = nullptr;
+	Close();
 }
 
-bool ConnectionWin::Open()
+bool BaseConnection::Open()
 {
 	wchar_t pipeName[]{L"\\\\?\\pipe\\discord-ipc-0"};
 	wchar_t* pipeDigit = pipeName + (sizeof(pipeName) / sizeof(wchar_t)) - 2;
 
-	for (char d = '0'; d <= '9';)
+	for (;;)
 	{
-		*pipeDigit = d;
 		pipe = CreateFileW(pipeName, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
 		if (pipe != INVALID_HANDLE_VALUE)
 		{
@@ -56,8 +39,11 @@ bool ConnectionWin::Open()
 		auto lastError = GetLastError();
 		if (lastError == ERROR_FILE_NOT_FOUND)
 		{
-			d++;
-			continue;
+			if (*pipeDigit < '9')
+			{
+				(*pipeDigit)++;
+				continue;
+			}
 		}
 		else if (lastError == ERROR_PIPE_BUSY)
 			if (WaitNamedPipeW(pipeName, 10000))
@@ -65,19 +51,20 @@ bool ConnectionWin::Open()
 
 		return false;
 	}
-
-	return false;
 }
 
-bool ConnectionWin::Close()
+void BaseConnection::Close()
 {
-	CloseHandle(pipe);
-	pipe = INVALID_HANDLE_VALUE;
+	if (pipe != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(pipe);
+		pipe = INVALID_HANDLE_VALUE;
+	}
+
 	isOpen = false;
-	return true;
 }
 
-bool ConnectionWin::Write(const void* data, size_t length)
+bool BaseConnection::Write(const void* data, size_t length)
 {
 	if (length == 0)
 		return true;
@@ -87,11 +74,13 @@ bool ConnectionWin::Write(const void* data, size_t length)
 
 	DWORD bytesLength = (DWORD)length;
 	DWORD bytesWritten = 0;
-	return WriteFile(pipe, data, bytesLength, &bytesWritten, nullptr) &&
-		bytesWritten == bytesLength;
+	if (WriteFile(pipe, data, bytesLength, &bytesWritten, nullptr))
+		return bytesWritten == bytesLength;
+
+	return false;
 }
 
-bool ConnectionWin::Read(void* data, size_t length)
+bool BaseConnection::Read(void* data, size_t length)
 {
 	if (pipe == INVALID_HANDLE_VALUE || !data)
 		return false;
