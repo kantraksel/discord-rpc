@@ -78,7 +78,7 @@ if(UNIX)
     endif (APPLE)
 endif(UNIX)
 
-target_include_directories(discord-rpc PRIVATE ${RAPIDJSON}/include)
+target_include_directories(discord-rpc PRIVATE ${RapidJSON_INCLUDE_DIRS})
 
 if (NOT ${ENABLE_IO_THREAD})
     target_compile_definitions(discord-rpc PUBLIC -DDISCORD_DISABLE_IO_THREAD)
