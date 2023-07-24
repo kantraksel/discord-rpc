@@ -1,7 +1,7 @@
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 option(ENABLE_IO_THREAD "Start up a separate I/O thread, otherwise I'd need to call an update function" ON)
-option(USE_STATIC_CRT "Use /MT[d] for dynamic library" OFF)
+option(USE_STATIC_CRT "Use statically-linked runtime library" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -24,19 +24,9 @@ if(WIN32)
 	
     set(BASE_RPC_SRC ${BASE_RPC_SRC} connection_win.cpp)
     add_library(discord-rpc ${BASE_RPC_SRC})
-    if (MSVC)
-        if(USE_STATIC_CRT)
-            foreach(CompilerFlag
-                    CMAKE_CXX_FLAGS
-                    CMAKE_CXX_FLAGS_DEBUG
-                    CMAKE_CXX_FLAGS_RELEASE
-                    CMAKE_C_FLAGS
-                    CMAKE_C_FLAGS_DEBUG
-                    CMAKE_C_FLAGS_RELEASE)
-                string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
-            endforeach()
-        endif(USE_STATIC_CRT)
-    endif(MSVC)
+	if(USE_STATIC_CRT)
+		set_property(TARGET discord-rpc PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+	endif(USE_STATIC_CRT)
     target_link_libraries(discord-rpc PRIVATE psapi advapi32)
 endif(WIN32)
 
