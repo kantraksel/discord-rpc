@@ -4,15 +4,11 @@
 #include "msg_queue.h"
 #include "rpc_connection.h"
 #include "serialization.h"
+#include "io_thread.h"
 
 #include <atomic>
 #include <chrono>
 #include <mutex>
-
-#ifndef DISCORD_DISABLE_IO_THREAD
-#include <condition_variable>
-#include <thread>
-#endif
 
 constexpr size_t MaxMessageSize{16 * 1024};
 constexpr size_t MessageQueueSize{8};
@@ -76,63 +72,7 @@ static auto NextConnect = std::chrono::system_clock::now();
 static int Pid{0};
 static int Nonce{1};
 
-#ifndef DISCORD_DISABLE_IO_THREAD
-static void Discord_UpdateConnection(void);
-class IoThreadHolder
-{
-private:
-    std::atomic_bool keepRunning{true};
-    std::mutex waitForIOMutex;
-    std::condition_variable waitForIOActivity;
-    std::thread ioThread;
-
-public:
-    void Start()
-    {
-        keepRunning.store(true);
-        ioThread = std::thread([&]()
-        {
-            const std::chrono::duration<int64_t, std::milli> maxWait{500LL};
-            Discord_UpdateConnection();
-            while (keepRunning.load())
-            {
-                std::unique_lock<std::mutex> lock(waitForIOMutex);
-                waitForIOActivity.wait_for(lock, maxWait);
-                Discord_UpdateConnection();
-            }
-        });
-    }
-
-    void Notify()
-    {
-        waitForIOActivity.notify_all();
-    }
-
-    void Stop()
-    {
-        keepRunning.exchange(false);
-        Notify();
-        if (ioThread.joinable())
-        {
-            ioThread.join();
-        }
-    }
-
-    ~IoThreadHolder()
-    {
-        Stop();
-    }
-};
-#else
-class IoThreadHolder
-{
-public:
-    void Start() {}
-    void Stop() {}
-    void Notify() {}
-};
-#endif // DISCORD_DISABLE_IO_THREAD
-static IoThreadHolder* IoThread{nullptr};
+static IoThread Thread;
 
 static void UpdateReconnectTime()
 {
@@ -144,7 +84,7 @@ static void UpdateReconnectTime()
 #ifdef DISCORD_DISABLE_IO_THREAD
 extern "C" DISCORD_EXPORT void Discord_UpdateConnection(void)
 #else
-static void Discord_UpdateConnection(void)
+void Discord_UpdateConnection(void)
 #endif
 {
     if (!Connection) {
@@ -250,12 +190,6 @@ static void Discord_UpdateConnection(void)
     }
 }
 
-static void SignalIOActivity()
-{
-    if (IoThread)
-        IoThread->Notify();
-}
-
 static bool RegisterForEvent(const char* evtName)
 {
     auto qmessage = SendQueue.GetNextAddMessage();
@@ -263,7 +197,7 @@ static bool RegisterForEvent(const char* evtName)
     {
         qmessage->length = JsonWriteSubscribeCommand(qmessage->buffer, sizeof(qmessage->buffer), Nonce++, evtName);
         SendQueue.CommitAdd();
-        SignalIOActivity();
+        Thread.Notify();
         return true;
     }
     return false;
@@ -276,7 +210,7 @@ static bool DeregisterForEvent(const char* evtName)
     {
         qmessage->length = JsonWriteUnsubscribeCommand(qmessage->buffer, sizeof(qmessage->buffer), Nonce++, evtName);
         SendQueue.CommitAdd();
-        SignalIOActivity();
+        Thread.Notify();
         return true;
     }
     return false;
@@ -285,12 +219,6 @@ static bool DeregisterForEvent(const char* evtName)
 extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,
                                                   DiscordEventHandlers* handlers)
 {
-    IoThread = new (std::nothrow) IoThreadHolder();
-    if (!IoThread)
-        return;
-
-    Pid = GetProcessId();
-
     {
         std::lock_guard<std::mutex> guard(HandlerMutex);
 
@@ -305,6 +233,8 @@ extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,
     if (Connection)
         return;
 
+    Pid = GetProcessId();
+
     Connection = RpcConnection::Create(applicationId);
     Connection->onConnect = [](JsonDocument& readyMessage)
     {
@@ -312,7 +242,7 @@ extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,
         if (QueuedPresence.length > 0)
         {
             UpdatePresence.exchange(true);
-            SignalIOActivity();
+            Thread.Notify();
         }
         auto data = GetObjMember(&readyMessage, "data");
         auto user = GetObjMember(data, "user");
@@ -344,7 +274,7 @@ extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,
         UpdateReconnectTime();
     };
 
-    IoThread->Start();
+    Thread.Start();
 }
 
 extern "C" DISCORD_EXPORT void Discord_Shutdown(void)
@@ -352,18 +282,13 @@ extern "C" DISCORD_EXPORT void Discord_Shutdown(void)
     if (!Connection)
         return;
 
+    Thread.Stop();
+
     Connection->onConnect = nullptr;
     Connection->onDisconnect = nullptr;
     Handlers = {};
     QueuedPresence.length = 0;
     UpdatePresence.exchange(false);
-
-    if (IoThread != nullptr)
-    {
-        IoThread->Stop();
-        delete IoThread;
-        IoThread = nullptr;
-    }
 
     RpcConnection::Destroy(Connection);
 }
@@ -375,7 +300,7 @@ extern "C" DISCORD_EXPORT void Discord_UpdatePresence(const DiscordRichPresence*
         QueuedPresence.length = JsonWriteRichPresenceObj(QueuedPresence.buffer, sizeof(QueuedPresence.buffer), Nonce++, Pid, presence);
         UpdatePresence.exchange(true);
     }
-    SignalIOActivity();
+    Thread.Notify();
 }
 
 extern "C" DISCORD_EXPORT void Discord_ClearPresence(void)
@@ -394,7 +319,7 @@ extern "C" DISCORD_EXPORT void Discord_Respond(const char* userId, /* DISCORD_RE
     {
         qmessage->length = JsonWriteJoinReply(qmessage->buffer, sizeof(qmessage->buffer), userId, reply, Nonce++);
         SendQueue.CommitAdd();
-        SignalIOActivity();
+        Thread.Notify();
     }
 }
 

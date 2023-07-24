@@ -15,6 +15,8 @@ set(BASE_RPC_SRC
     connection.h
     backoff.h
     msg_queue.h
+    io_thread.h
+    io_thread.cpp
 )
 
 if(WIN32)
