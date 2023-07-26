@@ -17,6 +17,7 @@ set(BASE_RPC_SRC
     msg_queue.h
     io_thread.h
     io_thread.cpp
+    events.h
 )
 
 if(WIN32)

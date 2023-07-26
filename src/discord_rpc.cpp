@@ -5,6 +5,7 @@
 #include "rpc_connection.h"
 #include "serialization.h"
 #include "io_thread.h"
+#include "events.h"
 
 #include <atomic>
 #include <chrono>
@@ -28,42 +29,20 @@ struct QueuedMessage
     }
 };
 
-struct User
-{
-    // snowflake (64bit int), turned into a ascii decimal string, at most 20 chars +1 null
-    // terminator = 21
-    char userId[32];
-    // 32 unicode glyphs is max name size => 4 bytes per glyph in the worst case, +1 for null
-    // terminator = 129
-    char username[344];
-    // 4 decimal digits + 1 null terminator = 5
-    char discriminator[8];
-    // optional 'a_' + md5 hex digest (32 bytes) + null terminator = 35
-    char avatar[128];
-    // Rounded way up because I'm paranoid about games breaking from future changes in these sizes
-};
-
 static RpcConnection* Connection{nullptr};
 static DiscordEventHandlers QueuedHandlers{};
 static DiscordEventHandlers Handlers{};
-static std::atomic_bool WasJustConnected{false};
-static std::atomic_bool WasJustDisconnected{false};
-static std::atomic_bool GotErrorMessage{false};
-static std::atomic_bool WasJoinGame{false};
-static std::atomic_bool WasSpectateGame{false};
+static ConnectEvent OnConnect;
+static DisconnectEvent OnDisconnect;
+static ErrorEvent OnError;
+static JoinGameEvent OnJoinGame;
+static SpectateGameEvent OnSpectateGame;
 static std::atomic_bool UpdatePresence{false};
-static char JoinGameSecret[256];
-static char SpectateGameSecret[256];
-static int LastErrorCode{0};
-static char LastErrorMessage[256];
-static int LastDisconnectErrorCode{0};
-static char LastDisconnectErrorMessage[256];
 static std::mutex PresenceMutex;
 static std::mutex HandlerMutex;
 static QueuedMessage QueuedPresence{};
 static MsgQueue<QueuedMessage, MessageQueueSize> SendQueue;
 static MsgQueue<User, JoinQueueSize> JoinAskQueue;
-static User connectedUser;
 
 // We want to auto connect, and retry on failure, but not as fast as possible. This does expoential
 // backoff from 0.5 seconds to 1 minute
@@ -115,9 +94,7 @@ void Discord_UpdateConnection(void)
 
                 if (evtName && strcmp(evtName, "ERROR") == 0) {
                     auto data = GetObjMember(&message, "data");
-                    LastErrorCode = GetIntMember(data, "code");
-                    StringCopy(LastErrorMessage, GetStrMember(data, "message", ""));
-                    GotErrorMessage.store(true);
+                    OnError.Set(GetIntMember(data, "code"), GetStrMember(data, "message", ""));
                 }
             }
             else {
@@ -130,17 +107,13 @@ void Discord_UpdateConnection(void)
 
                 if (strcmp(evtName, "ACTIVITY_JOIN") == 0) {
                     auto secret = GetStrMember(data, "secret");
-                    if (secret) {
-                        StringCopy(JoinGameSecret, secret);
-                        WasJoinGame.store(true);
-                    }
+                    if (secret)
+                        OnJoinGame.Set(secret);
                 }
                 else if (strcmp(evtName, "ACTIVITY_SPECTATE") == 0) {
                     auto secret = GetStrMember(data, "secret");
-                    if (secret) {
-                        StringCopy(SpectateGameSecret, secret);
-                        WasSpectateGame.store(true);
-                    }
+                    if (secret)
+                        OnSpectateGame.Set(secret);
                 }
                 else if (strcmp(evtName, "ACTIVITY_JOIN_REQUEST") == 0) {
                     auto user = GetObjMember(data, "user");
@@ -244,6 +217,8 @@ extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,
             UpdatePresence.exchange(true);
             Thread.Notify();
         }
+        User connectedUser{};
+
         auto data = GetObjMember(&readyMessage, "data");
         auto user = GetObjMember(data, "user");
         auto userId = GetStrMember(user, "id");
@@ -262,15 +237,14 @@ extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,
             else
                 connectedUser.avatar[0] = 0;
         }
-        WasJustConnected.exchange(true);
+
+        OnConnect.Set(connectedUser);
         ReconnectTimeMs.reset();
     };
 
     Connection->onDisconnect = [](int err, const char* message)
     {
-        LastDisconnectErrorCode = err;
-        StringCopy(LastDisconnectErrorMessage, message);
-        WasJustDisconnected.exchange(true);
+        OnDisconnect.Set(err, message);
         UpdateReconnectTime();
     };
 
@@ -332,7 +306,7 @@ extern "C" DISCORD_EXPORT void Discord_RunCallbacks(void)
     if (!Connection)
         return;
 
-    bool wasDisconnected = WasJustDisconnected.exchange(false);
+    bool wasDisconnected = OnDisconnect.Consume();
     bool isConnected = Connection->IsOpen();
 
     if (isConnected)
@@ -340,14 +314,18 @@ extern "C" DISCORD_EXPORT void Discord_RunCallbacks(void)
         // if we are connected, disconnect cb first
         std::lock_guard<std::mutex> guard(HandlerMutex);
         if (wasDisconnected && Handlers.disconnected)
-            Handlers.disconnected(LastDisconnectErrorCode, LastDisconnectErrorMessage);
+        {
+            auto args = OnDisconnect.GetArgs();
+            Handlers.disconnected(args.first, args.second.c_str());
+        }
     }
 
-    if (WasJustConnected.exchange(false))
+    if (OnConnect.Consume())
     {
         std::lock_guard<std::mutex> guard(HandlerMutex);
         if (Handlers.ready)
         {
+            auto connectedUser = OnConnect.GetUser();
             DiscordUser du{connectedUser.userId,
                            connectedUser.username,
                            connectedUser.discriminator,
@@ -356,25 +334,34 @@ extern "C" DISCORD_EXPORT void Discord_RunCallbacks(void)
         }
     }
 
-    if (GotErrorMessage.exchange(false))
+    if (OnError.Consume())
     {
         std::lock_guard<std::mutex> guard(HandlerMutex);
         if (Handlers.errored)
-            Handlers.errored(LastErrorCode, LastErrorMessage);
+        {
+            auto args = OnError.GetArgs();
+            Handlers.errored(args.first, args.second.c_str());
+        }
     }
 
-    if (WasJoinGame.exchange(false))
+    if (OnJoinGame.Consume())
     {
         std::lock_guard<std::mutex> guard(HandlerMutex);
         if (Handlers.joinGame)
-            Handlers.joinGame(JoinGameSecret);
+        {
+            auto secret = OnJoinGame.GetSecret();
+            Handlers.joinGame(secret.c_str());
+        }
     }
 
-    if (WasSpectateGame.exchange(false))
+    if (OnSpectateGame.Consume())
     {
         std::lock_guard<std::mutex> guard(HandlerMutex);
         if (Handlers.spectateGame)
-            Handlers.spectateGame(SpectateGameSecret);
+        {
+            auto secret = OnJoinGame.GetSecret();
+            Handlers.spectateGame(secret.c_str());
+        }
     }
 
     // Right now this batches up any requests and sends them all in a burst; I could imagine a world
@@ -401,7 +388,10 @@ extern "C" DISCORD_EXPORT void Discord_RunCallbacks(void)
         // if we are not connected, disconnect message last
         std::lock_guard<std::mutex> guard(HandlerMutex);
         if (wasDisconnected && Handlers.disconnected)
-            Handlers.disconnected(LastDisconnectErrorCode, LastDisconnectErrorMessage);
+        {
+            auto args = OnDisconnect.GetArgs();
+            Handlers.disconnected(args.first, args.second.c_str());
+        }
     }
 }
 
