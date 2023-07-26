@@ -29,7 +29,7 @@ struct QueuedMessage
     }
 };
 
-static RpcConnection* Connection{nullptr};
+static RpcConnection Connection;
 static DiscordEventHandlers QueuedHandlers{};
 static DiscordEventHandlers Handlers{};
 static ConnectEvent OnConnect;
@@ -66,14 +66,10 @@ extern "C" DISCORD_EXPORT void Discord_UpdateConnection(void)
 void Discord_UpdateConnection(void)
 #endif
 {
-    if (!Connection) {
-        return;
-    }
-
-    if (!Connection->IsOpen()) {
+    if (!Connection.IsOpen()) {
         if (std::chrono::system_clock::now() >= NextConnect) {
             UpdateReconnectTime();
-            Connection->Open();
+            Connection.Open();
         }
     }
     else {
@@ -82,7 +78,7 @@ void Discord_UpdateConnection(void)
         for (;;) {
             JsonDocument message;
 
-            if (!Connection->Read(message)) {
+            if (!Connection.Read(message)) {
                 break;
             }
 
@@ -147,7 +143,7 @@ void Discord_UpdateConnection(void)
                 std::lock_guard<std::mutex> guard(PresenceMutex);
                 local.Copy(QueuedPresence);
             }
-            if (!Connection->Write(local.buffer, local.length)) {
+            if (!Connection.Write(local.buffer, local.length)) {
                 // if we fail to send, requeue
                 std::lock_guard<std::mutex> guard(PresenceMutex);
                 QueuedPresence.Copy(local);
@@ -157,7 +153,7 @@ void Discord_UpdateConnection(void)
 
         while (SendQueue.HavePendingSends()) {
             auto qmessage = SendQueue.GetNextSendMessage();
-            Connection->Write(qmessage->buffer, qmessage->length);
+            Connection.Write(qmessage->buffer, qmessage->length);
             SendQueue.CommitSend();
         }
     }
@@ -189,6 +185,45 @@ static bool DeregisterForEvent(const char* evtName)
     return false;
 }
 
+static void onConnect(JsonDocument& readyMessage)
+{
+    Discord_UpdateHandlers(&QueuedHandlers);
+    if (QueuedPresence.length > 0)
+    {
+        UpdatePresence.exchange(true);
+        Thread.Notify();
+    }
+    User connectedUser{};
+
+    auto data = GetObjMember(&readyMessage, "data");
+    auto user = GetObjMember(data, "user");
+    auto userId = GetStrMember(user, "id");
+    auto username = GetStrMember(user, "username");
+    auto avatar = GetStrMember(user, "avatar");
+    if (userId && username)
+    {
+        StringCopy(connectedUser.userId, userId);
+        StringCopy(connectedUser.username, username);
+        auto discriminator = GetStrMember(user, "discriminator");
+        if (discriminator)
+            StringCopy(connectedUser.discriminator, discriminator);
+
+        if (avatar)
+            StringCopy(connectedUser.avatar, avatar);
+        else
+            connectedUser.avatar[0] = 0;
+    }
+
+    OnConnect.Set(connectedUser);
+    ReconnectTimeMs.reset();
+}
+
+static void onDisconnect(int err, const char* message)
+{
+    OnDisconnect.Set(err, message);
+    UpdateReconnectTime();
+}
+
 extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,
                                                   DiscordEventHandlers* handlers)
 {
@@ -203,68 +238,20 @@ extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,
         Handlers = {};
     }
 
-    if (Connection)
-        return;
-
     Pid = GetProcessId();
 
-    Connection = RpcConnection::Create(applicationId);
-    Connection->onConnect = [](JsonDocument& readyMessage)
-    {
-        Discord_UpdateHandlers(&QueuedHandlers);
-        if (QueuedPresence.length > 0)
-        {
-            UpdatePresence.exchange(true);
-            Thread.Notify();
-        }
-        User connectedUser{};
-
-        auto data = GetObjMember(&readyMessage, "data");
-        auto user = GetObjMember(data, "user");
-        auto userId = GetStrMember(user, "id");
-        auto username = GetStrMember(user, "username");
-        auto avatar = GetStrMember(user, "avatar");
-        if (userId && username)
-        {
-            StringCopy(connectedUser.userId, userId);
-            StringCopy(connectedUser.username, username);
-            auto discriminator = GetStrMember(user, "discriminator");
-            if (discriminator)
-                StringCopy(connectedUser.discriminator, discriminator);
-
-            if (avatar)
-                StringCopy(connectedUser.avatar, avatar);
-            else
-                connectedUser.avatar[0] = 0;
-        }
-
-        OnConnect.Set(connectedUser);
-        ReconnectTimeMs.reset();
-    };
-
-    Connection->onDisconnect = [](int err, const char* message)
-    {
-        OnDisconnect.Set(err, message);
-        UpdateReconnectTime();
-    };
-
+    Connection.Initialize(applicationId, onConnect, onDisconnect);
     Thread.Start();
 }
 
 extern "C" DISCORD_EXPORT void Discord_Shutdown(void)
 {
-    if (!Connection)
-        return;
-
     Thread.Stop();
+    Connection.Close();
 
-    Connection->onConnect = nullptr;
-    Connection->onDisconnect = nullptr;
     Handlers = {};
     QueuedPresence.length = 0;
     UpdatePresence.exchange(false);
-
-    RpcConnection::Destroy(Connection);
 }
 
 extern "C" DISCORD_EXPORT void Discord_UpdatePresence(const DiscordRichPresence* presence)
@@ -285,7 +272,7 @@ extern "C" DISCORD_EXPORT void Discord_ClearPresence(void)
 extern "C" DISCORD_EXPORT void Discord_Respond(const char* userId, /* DISCORD_REPLY_ */ int reply)
 {
     // if we are not connected, let's not batch up stale messages for later
-    if (!Connection || !Connection->IsOpen())
+    if (!Connection.IsOpen())
         return;
 
     auto qmessage = SendQueue.GetNextAddMessage();
@@ -303,11 +290,8 @@ extern "C" DISCORD_EXPORT void Discord_RunCallbacks(void)
     // of times inbetween calls here. Externally, we want the sequence to seem sane, so any other
     // signals are book-ended by calls to ready and disconnect.
 
-    if (!Connection)
-        return;
-
     bool wasDisconnected = OnDisconnect.Consume();
-    bool isConnected = Connection->IsOpen();
+    bool isConnected = Connection.IsOpen();
 
     if (isConnected)
     {

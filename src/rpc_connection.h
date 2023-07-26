@@ -9,6 +9,11 @@ constexpr size_t MaxRpcFrameSize = 64 * 1024;
 
 class RpcConnection
 {
+public:
+    typedef void(*OnConnect)(JsonDocument& message);
+    typedef void(*OnDisconnect)(int errorCode, const char* message);
+
+private:
     enum class ErrorCode : int
     {
         Success = 0,
@@ -50,12 +55,11 @@ class RpcConnection
     char lastErrorMessage[256]{};
     MessageFrame frame;
 
-public:
-    void (*onConnect)(JsonDocument& message){nullptr};
-    void (*onDisconnect)(int errorCode, const char* message){nullptr};
+    OnConnect onConnect{ nullptr };
+    OnDisconnect onDisconnect{ nullptr };
 
-    static RpcConnection* Create(const char* applicationId);
-    static void Destroy(RpcConnection*&);
+public:
+    void Initialize(const char* applicationId, OnConnect onConnect, OnDisconnect onDisconnect);
 
     inline bool IsOpen() const { return state == State::Connected; }
 

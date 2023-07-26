@@ -4,18 +4,12 @@
 #include <atomic>
 
 constexpr int RpcVersion = 1;
-static RpcConnection Instance;
 
-RpcConnection* RpcConnection::Create(const char* applicationId)
+void RpcConnection::Initialize(const char* applicationId, OnConnect onConnect, OnDisconnect onDisconnect)
 {
-    StringCopy(Instance.appId, applicationId);
-    return &Instance;
-}
-
-void RpcConnection::Destroy(RpcConnection*& c)
-{
-    c->Close();
-    c = nullptr;
+    StringCopy(appId, applicationId);
+    this->onConnect = onConnect;
+    this->onDisconnect = onDisconnect;
 }
 
 void RpcConnection::Open()
