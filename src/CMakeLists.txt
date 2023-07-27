@@ -18,6 +18,7 @@ set(BASE_RPC_SRC
     io_thread.h
     io_thread.cpp
     events.h
+    presence.h
 )
 
 if(WIN32)

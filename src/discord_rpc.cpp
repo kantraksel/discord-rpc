@@ -6,6 +6,7 @@
 #include "serialization.h"
 #include "io_thread.h"
 #include "events.h"
+#include "presence.h"
 
 #include <atomic>
 #include <chrono>
@@ -37,10 +38,8 @@ static DisconnectEvent OnDisconnect;
 static ErrorEvent OnError;
 static JoinGameEvent OnJoinGame;
 static SpectateGameEvent OnSpectateGame;
-static std::atomic_bool UpdatePresence{false};
-static std::mutex PresenceMutex;
+static PresenceEvent PresenceUpdate;
 static std::mutex HandlerMutex;
-static QueuedMessage QueuedPresence{};
 static MsgQueue<QueuedMessage, MessageQueueSize> SendQueue;
 static MsgQueue<User, JoinQueueSize> JoinAskQueue;
 
@@ -137,18 +136,11 @@ void Discord_UpdateConnection(void)
         }
 
         // writes
-        if (UpdatePresence.exchange(false) && QueuedPresence.length) {
-            QueuedMessage local;
-            {
-                std::lock_guard<std::mutex> guard(PresenceMutex);
-                local.Copy(QueuedPresence);
-            }
-            if (!Connection.Write(local.buffer, local.length)) {
-                // if we fail to send, requeue
-                std::lock_guard<std::mutex> guard(PresenceMutex);
-                QueuedPresence.Copy(local);
-                UpdatePresence.exchange(true);
-            }
+        if (PresenceUpdate.Consume())
+        {
+            auto local = PresenceUpdate.GetBuffer();
+            if (!Connection.Write(local.buffer, local.length))
+                PresenceUpdate.Set(local);
         }
 
         while (SendQueue.HavePendingSends()) {
@@ -188,11 +180,6 @@ static bool DeregisterForEvent(const char* evtName)
 static void onConnect(JsonDocument& readyMessage)
 {
     Discord_UpdateHandlers(&QueuedHandlers);
-    if (QueuedPresence.length > 0)
-    {
-        UpdatePresence.exchange(true);
-        Thread.Notify();
-    }
     User connectedUser{};
 
     auto data = GetObjMember(&readyMessage, "data");
@@ -250,17 +237,16 @@ extern "C" DISCORD_EXPORT void Discord_Shutdown(void)
     Connection.Close();
 
     Handlers = {};
-    QueuedPresence.length = 0;
-    UpdatePresence.exchange(false);
+    PresenceUpdate.Reset();
 }
 
+static Buffer presenceBuff;
 extern "C" DISCORD_EXPORT void Discord_UpdatePresence(const DiscordRichPresence* presence)
 {
-    {
-        std::lock_guard<std::mutex> guard(PresenceMutex);
-        QueuedPresence.length = JsonWriteRichPresenceObj(QueuedPresence.buffer, sizeof(QueuedPresence.buffer), Nonce++, Pid, presence);
-        UpdatePresence.exchange(true);
-    }
+    
+    presenceBuff.length = JsonWriteRichPresenceObj(presenceBuff.buffer, sizeof(presenceBuff.buffer), Nonce++, Pid, presence);
+    PresenceUpdate.Set(presenceBuff);
+
     Thread.Notify();
 }
 
