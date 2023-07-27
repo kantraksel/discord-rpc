@@ -19,6 +19,8 @@ set(BASE_RPC_SRC
     io_thread.cpp
     events.h
     presence.h
+    data_channel.h
+    data_channel.cpp
 )
 
 if(WIN32)

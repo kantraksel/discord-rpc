@@ -6,29 +6,13 @@
 #include "serialization.h"
 #include "io_thread.h"
 #include "events.h"
-#include "presence.h"
+#include "data_channel.h"
 
 #include <atomic>
 #include <chrono>
 #include <mutex>
 
-constexpr size_t MaxMessageSize{16 * 1024};
-constexpr size_t MessageQueueSize{8};
 constexpr size_t JoinQueueSize{8};
-
-struct QueuedMessage
-{
-    size_t length;
-    char buffer[MaxMessageSize];
-
-    void Copy(const QueuedMessage& other)
-    {
-        length = other.length;
-        if (length) {
-            memcpy(buffer, other.buffer, length);
-        }
-    }
-};
 
 static RpcConnection Connection;
 static DiscordEventHandlers QueuedHandlers{};
@@ -38,17 +22,14 @@ static DisconnectEvent OnDisconnect;
 static ErrorEvent OnError;
 static JoinGameEvent OnJoinGame;
 static SpectateGameEvent OnSpectateGame;
-static PresenceEvent PresenceUpdate;
 static std::mutex HandlerMutex;
-static MsgQueue<QueuedMessage, MessageQueueSize> SendQueue;
+static DataChannel Channel(Connection);
 static MsgQueue<User, JoinQueueSize> JoinAskQueue;
 
 // We want to auto connect, and retry on failure, but not as fast as possible. This does expoential
 // backoff from 0.5 seconds to 1 minute
 static Backoff ReconnectTimeMs(500, 60 * 1000);
 static auto NextConnect = std::chrono::system_clock::now();
-static int Pid{0};
-static int Nonce{1};
 
 static IoThread Thread;
 
@@ -56,6 +37,82 @@ static void UpdateReconnectTime()
 {
     NextConnect = std::chrono::system_clock::now() +
       std::chrono::duration<int64_t, std::milli>{ReconnectTimeMs.nextDelay()};
+}
+
+static bool DeserializeUser(JsonValue* data, User& connectedUser)
+{
+    auto user = GetObjMember(data, "user");
+    if (!user)
+        return false;
+
+    auto userId = GetStrMember(user, "id");
+    auto username = GetStrMember(user, "username");
+    if (userId && username)
+    {
+        StringCopy(connectedUser.userId, userId);
+        StringCopy(connectedUser.username, username);
+        auto discriminator = GetStrMember(user, "discriminator");
+        if (discriminator)
+            StringCopy(connectedUser.discriminator, discriminator);
+
+        auto avatar = GetStrMember(user, "avatar");
+        if (avatar)
+            StringCopy(connectedUser.avatar, avatar);
+        else
+            connectedUser.avatar[0] = 0;
+
+        return true;
+    }
+
+    return false;
+}
+
+static void DeserializeUser(JsonDocument& message, User& connectedUser)
+{
+    auto data = GetObjMember(&message, "data");
+    if (!data)
+        return;
+
+    DeserializeUser(data, connectedUser);
+}
+
+static void ReceiveData()
+{
+    for (;;)
+    {
+        JsonDocument message;
+        if (!Connection.Read(message))
+            break;
+
+        const char* evtName = GetStrMember(&message, "evt");
+        auto* data = GetObjMember(&message, "data");
+
+        if (!evtName || !data)
+            continue;
+
+        std::string_view eventName = evtName;
+
+        if (eventName == "ERROR")
+            OnError.Set(GetIntMember(data, "code"), GetStrMember(data, "message", ""));
+        else if (eventName == "ACTIVITY_JOIN")
+        {
+            auto secret = GetStrMember(data, "secret");
+            if (secret)
+                OnJoinGame.Set(secret);
+        }
+        else if (eventName == "ACTIVITY_SPECTATE")
+        {
+            auto secret = GetStrMember(data, "secret");
+            if (secret)
+                OnSpectateGame.Set(secret);
+        }
+        else if (eventName == "ACTIVITY_JOIN_REQUEST")
+        {
+            auto* joinReq = JoinAskQueue.GetNextAddMessage();
+            if (joinReq && DeserializeUser(data, *joinReq))
+                JoinAskQueue.CommitAdd();
+        }
+    }
 }
 
 //TODO: syntax
@@ -71,135 +128,19 @@ void Discord_UpdateConnection(void)
             Connection.Open();
         }
     }
-    else {
-        // reads
-
-        for (;;) {
-            JsonDocument message;
-
-            if (!Connection.Read(message)) {
-                break;
-            }
-
-            const char* evtName = GetStrMember(&message, "evt");
-            const char* nonce = GetStrMember(&message, "nonce");
-
-            if (nonce) {
-                // in responses only -- should use to match up response when needed.
-
-                if (evtName && strcmp(evtName, "ERROR") == 0) {
-                    auto data = GetObjMember(&message, "data");
-                    OnError.Set(GetIntMember(data, "code"), GetStrMember(data, "message", ""));
-                }
-            }
-            else {
-                // should have evt == name of event, optional data
-                if (evtName == nullptr) {
-                    continue;
-                }
-
-                auto data = GetObjMember(&message, "data");
-
-                if (strcmp(evtName, "ACTIVITY_JOIN") == 0) {
-                    auto secret = GetStrMember(data, "secret");
-                    if (secret)
-                        OnJoinGame.Set(secret);
-                }
-                else if (strcmp(evtName, "ACTIVITY_SPECTATE") == 0) {
-                    auto secret = GetStrMember(data, "secret");
-                    if (secret)
-                        OnSpectateGame.Set(secret);
-                }
-                else if (strcmp(evtName, "ACTIVITY_JOIN_REQUEST") == 0) {
-                    auto user = GetObjMember(data, "user");
-                    auto userId = GetStrMember(user, "id");
-                    auto username = GetStrMember(user, "username");
-                    auto avatar = GetStrMember(user, "avatar");
-                    auto joinReq = JoinAskQueue.GetNextAddMessage();
-                    if (userId && username && joinReq) {
-                        StringCopy(joinReq->userId, userId);
-                        StringCopy(joinReq->username, username);
-                        auto discriminator = GetStrMember(user, "discriminator");
-                        if (discriminator) {
-                            StringCopy(joinReq->discriminator, discriminator);
-                        }
-                        if (avatar) {
-                            StringCopy(joinReq->avatar, avatar);
-                        }
-                        else {
-                            joinReq->avatar[0] = 0;
-                        }
-                        JoinAskQueue.CommitAdd();
-                    }
-                }
-            }
-        }
-
-        // writes
-        if (PresenceUpdate.Consume())
-        {
-            auto local = PresenceUpdate.GetBuffer();
-            if (!Connection.Write(local.buffer, local.length))
-                PresenceUpdate.Set(local);
-        }
-
-        while (SendQueue.HavePendingSends()) {
-            auto qmessage = SendQueue.GetNextSendMessage();
-            Connection.Write(qmessage->buffer, qmessage->length);
-            SendQueue.CommitSend();
-        }
-    }
-}
-
-static bool RegisterForEvent(const char* evtName)
-{
-    auto qmessage = SendQueue.GetNextAddMessage();
-    if (qmessage)
+    else
     {
-        qmessage->length = JsonWriteSubscribeCommand(qmessage->buffer, sizeof(qmessage->buffer), Nonce++, evtName);
-        SendQueue.CommitAdd();
-        Thread.Notify();
-        return true;
+        ReceiveData();
+        Channel.SendData();
     }
-    return false;
-}
-
-static bool DeregisterForEvent(const char* evtName)
-{
-    auto qmessage = SendQueue.GetNextAddMessage();
-    if (qmessage)
-    {
-        qmessage->length = JsonWriteUnsubscribeCommand(qmessage->buffer, sizeof(qmessage->buffer), Nonce++, evtName);
-        SendQueue.CommitAdd();
-        Thread.Notify();
-        return true;
-    }
-    return false;
 }
 
 static void onConnect(JsonDocument& readyMessage)
 {
     Discord_UpdateHandlers(&QueuedHandlers);
+
     User connectedUser{};
-
-    auto data = GetObjMember(&readyMessage, "data");
-    auto user = GetObjMember(data, "user");
-    auto userId = GetStrMember(user, "id");
-    auto username = GetStrMember(user, "username");
-    auto avatar = GetStrMember(user, "avatar");
-    if (userId && username)
-    {
-        StringCopy(connectedUser.userId, userId);
-        StringCopy(connectedUser.username, username);
-        auto discriminator = GetStrMember(user, "discriminator");
-        if (discriminator)
-            StringCopy(connectedUser.discriminator, discriminator);
-
-        if (avatar)
-            StringCopy(connectedUser.avatar, avatar);
-        else
-            connectedUser.avatar[0] = 0;
-    }
+    DeserializeUser(readyMessage, connectedUser);
 
     OnConnect.Set(connectedUser);
     ReconnectTimeMs.reset();
@@ -225,8 +166,6 @@ extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,
         Handlers = {};
     }
 
-    Pid = GetProcessId();
-
     Connection.Initialize(applicationId, onConnect, onDisconnect);
     Thread.Start();
 }
@@ -237,15 +176,12 @@ extern "C" DISCORD_EXPORT void Discord_Shutdown(void)
     Connection.Close();
 
     Handlers = {};
-    PresenceUpdate.Reset();
+    Channel.Reset();
 }
 
-static Buffer presenceBuff;
 extern "C" DISCORD_EXPORT void Discord_UpdatePresence(const DiscordRichPresence* presence)
 {
-    
-    presenceBuff.length = JsonWriteRichPresenceObj(presenceBuff.buffer, sizeof(presenceBuff.buffer), Nonce++, Pid, presence);
-    PresenceUpdate.Set(presenceBuff);
+    Channel.UpdatePresence(presence);
 
     Thread.Notify();
 }
@@ -261,13 +197,8 @@ extern "C" DISCORD_EXPORT void Discord_Respond(const char* userId, /* DISCORD_RE
     if (!Connection.IsOpen())
         return;
 
-    auto qmessage = SendQueue.GetNextAddMessage();
-    if (qmessage)
-    {
-        qmessage->length = JsonWriteJoinReply(qmessage->buffer, sizeof(qmessage->buffer), userId, reply, Nonce++);
-        SendQueue.CommitAdd();
+    if (Channel.ReplyJoinRequest(userId, reply))
         Thread.Notify();
-    }
 }
 
 extern "C" DISCORD_EXPORT void Discord_RunCallbacks(void)
@@ -371,9 +302,9 @@ extern "C" DISCORD_EXPORT void Discord_UpdateHandlers(DiscordEventHandlers* newH
     {
 #define HANDLE_EVENT_REGISTRATION(handler_name, event)                  \
         if (!Handlers.handler_name && newHandlers->handler_name)        \
-            RegisterForEvent(event);                                    \
+            Channel.SubscribeEvent(event);                              \
         else if (Handlers.handler_name && !newHandlers->handler_name)   \
-            DeregisterForEvent(event);
+            Channel.UnsubscribeEvent(event);
 // end HANDLE_EVENT_REGISTRATION
 
         std::lock_guard<std::mutex> guard(HandlerMutex);
@@ -384,6 +315,7 @@ extern "C" DISCORD_EXPORT void Discord_UpdateHandlers(DiscordEventHandlers* newH
 #undef HANDLE_EVENT_REGISTRATION
 
         Handlers = *newHandlers;
+        Thread.Notify();
     }
     else
     {
