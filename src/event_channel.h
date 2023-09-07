@@ -25,9 +25,9 @@ public:
 	void OnDisconnect(int err, const char* message);
 	void ReceiveData();
 
-	void SetHandlers(DiscordEventHandlers* newHandlers);
+	void SetHandlers(const DiscordEventHandlers* newHandlers);
 	void InitHandlers();
-	void UpdateHandlers(DiscordEventHandlers* newHandlers);
+	void UpdateHandlers(const DiscordEventHandlers* newHandlers);
 
 	void RunCallbacks();
 };

@@ -1,100 +1,48 @@
 #include "discord_rpc.h"
+#include "discord_rpc_impl.h"
 
-#include "backoff.h"
-#include "rpc_connection.h"
-#include "io_thread.h"
-#include "data_channel.h"
-#include "event_channel.h"
+static DiscordRpcImpl cinstance;
 
-static RpcConnection Connection;
-static DataChannel SendChannel(Connection);
-static EventChannel ReceiveChannel(Connection, SendChannel);
-
-// We want to auto connect, and retry on failure, but not as fast as possible. This does expoential
-// backoff from 0.5 seconds to 1 minute
-static Backoff ReconnectTimeMs(500, 60 * 1000);
-
-static IoThread Thread;
-
-//TODO: syntax
 #ifdef DISCORD_DISABLE_IO_THREAD
 extern "C" DISCORD_EXPORT void Discord_UpdateConnection(void)
 #else
 void Discord_UpdateConnection(void)
 #endif
 {
-    if (!Connection.IsOpen()) {
-        if (ReconnectTimeMs.tryConsume()) {
-            Connection.Open();
-        }
-    }
-    else
-    {
-		ReceiveChannel.ReceiveData();
-		SendChannel.SendData();
-    }
+	cinstance.UpdateConnection();
 }
 
-static void onConnect(JsonDocument& readyMessage)
+extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId, DiscordEventHandlers* handlers)
 {
-    ReceiveChannel.InitHandlers();
-	ReceiveChannel.OnConnect(readyMessage);
-    
-    ReconnectTimeMs.reset();
-}
-
-static void onDisconnect(int err, const char* message)
-{
-    ReceiveChannel.OnDisconnect(err, message);
-	ReconnectTimeMs.setNewDelay();
-}
-
-extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,
-                                                  DiscordEventHandlers* handlers)
-{
-    ReceiveChannel.SetHandlers(handlers);
-    Connection.Initialize(applicationId, onConnect, onDisconnect);
-    Thread.Start();
+	cinstance.Initialize(applicationId, handlers);
 }
 
 extern "C" DISCORD_EXPORT void Discord_Shutdown(void)
 {
-    Thread.Stop();
-    Connection.Close();
-
-    ReceiveChannel.SetHandlers(nullptr);
-	SendChannel.Reset();
+	cinstance.Shutdown();
 }
 
 extern "C" DISCORD_EXPORT void Discord_UpdatePresence(const DiscordRichPresence* presence)
 {
-	SendChannel.UpdatePresence(presence);
-
-    Thread.Notify();
+	cinstance.UpdatePresence(presence);
 }
 
 extern "C" DISCORD_EXPORT void Discord_ClearPresence(void)
 {
-    Discord_UpdatePresence(nullptr);
+	cinstance.ClearPresence();
 }
 
 extern "C" DISCORD_EXPORT void Discord_Respond(const char* userId, /* DISCORD_REPLY_ */ int reply)
 {
-    // if we are not connected, let's not batch up stale messages for later
-    if (!Connection.IsOpen())
-        return;
-
-    if (SendChannel.ReplyJoinRequest(userId, reply))
-        Thread.Notify();
+	cinstance.Respond(userId, reply);
 }
 
 extern "C" DISCORD_EXPORT void Discord_RunCallbacks(void)
 {
-	ReceiveChannel.RunCallbacks();
+	cinstance.RunCallbacks();
 }
 
-extern "C" DISCORD_EXPORT void Discord_UpdateHandlers(DiscordEventHandlers* newHandlers)
+extern "C" DISCORD_EXPORT void Discord_UpdateHandlers(DiscordEventHandlers* handlers)
 {
-    ReceiveChannel.UpdateHandlers(newHandlers);
-	Thread.Notify();
+	cinstance.UpdateHandlers(handlers);
 }

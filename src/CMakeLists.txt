@@ -6,8 +6,12 @@ option(USE_STATIC_CRT "Use statically-linked runtime library" OFF)
 set(CMAKE_CXX_STANDARD 20)
 
 set(BASE_RPC_SRC
+    ${PROJECT_SOURCE_DIR}/include/discord_rpc_shared.h
     ${PROJECT_SOURCE_DIR}/include/discord_rpc.h
+    ${PROJECT_SOURCE_DIR}/include/discord_rpc.hpp
+    discord_rpc_impl.h
     discord_rpc.cpp
+    discord_rpc_impl.cpp
     rpc_connection.h
     rpc_connection.cpp
     serialization.h

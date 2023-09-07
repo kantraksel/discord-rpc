@@ -97,7 +97,7 @@ void EventChannel::ReceiveData()
 	}
 }
 
-void EventChannel::SetHandlers(DiscordEventHandlers* newHandlers)
+void EventChannel::SetHandlers(const DiscordEventHandlers* newHandlers)
 {
 	// used in Discord_Initialize
 	std::lock_guard<std::mutex> guard(mutex);
@@ -119,7 +119,7 @@ void EventChannel::InitHandlers()
 		sendChannel.SubscribeEvent("ACTIVITY_JOIN_REQUEST");
 }
 
-void EventChannel::UpdateHandlers(DiscordEventHandlers* newHandlers)
+void EventChannel::UpdateHandlers(const DiscordEventHandlers* newHandlers)
 {
 	// mutex prevents bugs related to un/subscribed events
 	std::lock_guard<std::mutex> guard(mutex);

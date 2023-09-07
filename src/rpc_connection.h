@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include "connection.h"
 #include "serialization.h"
 
@@ -10,8 +11,8 @@ constexpr size_t MaxRpcFrameSize = 64 * 1024;
 class RpcConnection
 {
 public:
-    typedef void(*OnConnect)(JsonDocument& message);
-    typedef void(*OnDisconnect)(int errorCode, const char* message);
+	typedef std::function<void(JsonDocument& message)> OnConnect;
+	typedef std::function<void(int errorCode, const char* message)> OnDisconnect;
 
 private:
     enum class ErrorCode : int
