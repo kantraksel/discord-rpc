@@ -2,14 +2,9 @@
 
 #include "backoff.h"
 #include "rpc_connection.h"
-#include "serialization.h"
 #include "io_thread.h"
 #include "data_channel.h"
 #include "event_channel.h"
-
-#include <atomic>
-#include <chrono>
-#include <mutex>
 
 static RpcConnection Connection;
 static DataChannel SendChannel(Connection);
@@ -18,15 +13,8 @@ static EventChannel ReceiveChannel(Connection, SendChannel);
 // We want to auto connect, and retry on failure, but not as fast as possible. This does expoential
 // backoff from 0.5 seconds to 1 minute
 static Backoff ReconnectTimeMs(500, 60 * 1000);
-static auto NextConnect = std::chrono::system_clock::now();
 
 static IoThread Thread;
-
-static void UpdateReconnectTime()
-{
-    NextConnect = std::chrono::system_clock::now() +
-      std::chrono::duration<int64_t, std::milli>{ReconnectTimeMs.nextDelay()};
-}
 
 //TODO: syntax
 #ifdef DISCORD_DISABLE_IO_THREAD
@@ -36,8 +24,7 @@ void Discord_UpdateConnection(void)
 #endif
 {
     if (!Connection.IsOpen()) {
-        if (std::chrono::system_clock::now() >= NextConnect) {
-            UpdateReconnectTime();
+        if (ReconnectTimeMs.tryConsume()) {
             Connection.Open();
         }
     }
@@ -59,7 +46,7 @@ static void onConnect(JsonDocument& readyMessage)
 static void onDisconnect(int err, const char* message)
 {
     ReceiveChannel.OnDisconnect(err, message);
-    UpdateReconnectTime();
+	ReconnectTimeMs.setNewDelay();
 }
 
 extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId,

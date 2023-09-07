@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <random>
 #include <stdint.h>
+#include <chrono>
 
 struct Backoff
 {
@@ -10,6 +11,7 @@ struct Backoff
     int64_t maxAmount;
     int64_t current;
     int fails;
+	std::chrono::system_clock::time_point nextAttempt;
 
     std::mt19937_64 randGenerator;
     std::uniform_real_distribution<> randDistribution;
@@ -37,4 +39,21 @@ struct Backoff
         current = std::min(current + delay, maxAmount);
         return current;
     }
+
+	bool tryConsume()
+	{
+		auto now = std::chrono::system_clock::now();
+		if (now >= nextAttempt)
+		{
+			nextAttempt = now + std::chrono::duration<int64_t, std::milli>{ nextDelay() };
+			return true;
+		}
+
+		return false;
+	}
+
+	void setNewDelay()
+	{
+		nextAttempt = std::chrono::system_clock::now() + std::chrono::duration<int64_t, std::milli>{ nextDelay() };
+	}
 };
