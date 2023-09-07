@@ -1,4 +1,3 @@
-#include "connection.h"
 #include "msg_queue.h"
 #include "presence.h"
 

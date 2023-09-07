@@ -1,7 +1,7 @@
-#include "discord_rpc.h"
 #include "rpc_connection.h"
 #include "data_channel.h"
 #include "event_channel.h"
+#include "serialization.h"
 
 EventChannel::EventChannel(RpcConnection& connection, DataChannel& sendChannel) : connection(connection), sendChannel(sendChannel)
 {

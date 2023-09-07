@@ -1,5 +1,6 @@
 #include "data_channel.h"
 #include "rpc_connection.h"
+#include "serialization.h"
 
 DataChannel::DataChannel(RpcConnection& connection) : connection(connection)
 {

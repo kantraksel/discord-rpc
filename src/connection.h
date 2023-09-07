@@ -1,5 +1,4 @@
 #pragma once
-
 #include <cstdlib>
 
 // not really connectiony, but need per-platform

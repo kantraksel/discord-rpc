@@ -1,13 +1,14 @@
-#include "connection.h"
+#include <cstdio>
+#include <cstring>
 
 #include <errno.h>
 #include <fcntl.h>
-#include <stdio.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
+
+#include "connection.h"
 
 int GetProcessId()
 {
@@ -52,7 +53,7 @@ bool BaseConnection::Open()
     setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval));
 #endif
 
-    sockaddr_un addr{AF_UNIX};
+    sockaddr_un addr{AF_UNIX, ""};
     for (int pipeNum = 0; pipeNum < 10; ++pipeNum)
     {
         snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/discord-ipc-%d", tempPath, pipeNum);

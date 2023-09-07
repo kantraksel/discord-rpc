@@ -1,7 +1,6 @@
 #pragma once
 
 #ifndef DISCORD_DISABLE_IO_THREAD
-	#include <atomic>
 	#include <condition_variable>
 	#include <mutex>
 	#include <thread>

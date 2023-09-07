@@ -1,9 +1,7 @@
 #pragma once
-
 #include <atomic>
 
-// A simple queue. No locks, but only works with a single thread as producer and a single thread as
-// a consumer. Mutex up as needed.
+// No locks, but only works with a single thread as producer and a single thread as a consumer
 
 template <typename ElementType, size_t QueueSize>
 class MsgQueue
@@ -16,7 +14,6 @@ class MsgQueue
 public:
     ElementType* GetNextAddMessage()
     {
-        // if we are falling behind, bail
         if (pendingSends_.load() >= QueueSize)
             return nullptr;
 

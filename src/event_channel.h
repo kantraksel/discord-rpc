@@ -1,8 +1,12 @@
-#include <mutex>
+#include "discord_rpc_shared.h"
 #include "msg_queue.h"
 #include "events.h"
 
 constexpr size_t JoinQueueSize{8};
+
+class RpcConnection;
+class DataChannel;
+class JsonDocument;
 
 class EventChannel
 {
