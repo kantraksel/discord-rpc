@@ -1,16 +1,15 @@
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
-option(ENABLE_IO_THREAD "Start up a separate I/O thread, otherwise I'd need to call an update function" ON)
-option(USE_STATIC_CRT "Use statically-linked runtime library" OFF)
+option(ENABLE_IO_THREAD "Runs I/O pump in separate thread. When disabled, use UpdateConnection()" ON)
+option(USE_STATIC_CRT "Use statically-linked runtime library. Windows only" OFF)
+option(ENABLE_C_API "Enables C API, needed for language bindings (e.g. C#)" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 
 set(BASE_RPC_SRC
     ${PROJECT_SOURCE_DIR}/include/discord_rpc_shared.h
-    ${PROJECT_SOURCE_DIR}/include/discord_rpc.h
     ${PROJECT_SOURCE_DIR}/include/discord_rpc.hpp
     discord_rpc_impl.h
-    discord_rpc.cpp
     discord_rpc_impl.cpp
     rpc_connection.h
     rpc_connection.cpp
@@ -29,20 +28,25 @@ set(BASE_RPC_SRC
     event_channel.cpp
 )
 
-if(WIN32)
-	if (${BUILD_SHARED_LIBS})
-		set(BASE_RPC_SRC ${BASE_RPC_SRC} dllmain.cpp)
-	endif(${BUILD_SHARED_LIBS})
-	
+if (ENABLE_C_API)
+    set(BASE_RPC_SRC ${BASE_RPC_SRC} ${PROJECT_SOURCE_DIR}/include/discord_rpc.h discord_rpc.cpp)
+endif (ENABLE_C_API)
+
+if (WIN32)
+    if (${BUILD_SHARED_LIBS})
+        set(BASE_RPC_SRC ${BASE_RPC_SRC} dllmain.cpp)
+    endif (${BUILD_SHARED_LIBS})
+    
     set(BASE_RPC_SRC ${BASE_RPC_SRC} connection_win.cpp)
     add_library(discord-rpc ${BASE_RPC_SRC})
-	if(USE_STATIC_CRT)
-		set_property(TARGET discord-rpc PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-	endif(USE_STATIC_CRT)
+    
+    if (USE_STATIC_CRT)
+        set_property(TARGET discord-rpc PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif (USE_STATIC_CRT)
     target_link_libraries(discord-rpc PRIVATE psapi advapi32)
-endif(WIN32)
+endif (WIN32)
 
-if(UNIX)
+if (UNIX)
     set(BASE_RPC_SRC ${BASE_RPC_SRC} connection_unix.cpp)
 
     add_library(discord-rpc ${BASE_RPC_SRC})
@@ -53,22 +57,9 @@ if(UNIX)
     endif (APPLE)
 
     target_compile_options(discord-rpc PRIVATE
-        -g
         -Wall
         -Wextra
         -Wpedantic
-    )
-
-    target_compile_options(discord-rpc PRIVATE
-        -Wno-unknown-pragmas # pragma push thing doesn't work on clang
-        -Wno-old-style-cast # it's fine
-        -Wno-c++98-compat # that was almost 2 decades ago
-        -Wno-c++98-compat-pedantic
-        -Wno-missing-noreturn
-        -Wno-padded # structure padding
-        -Wno-covered-switch-default
-        -Wno-exit-time-destructors # not sure about these
-        -Wno-global-constructors
     )
 
     if (${BUILD_SHARED_LIBS})
@@ -78,7 +69,7 @@ if(UNIX)
     if (APPLE)
         target_link_libraries(discord-rpc PRIVATE "-framework AppKit")
     endif (APPLE)
-endif(UNIX)
+endif (UNIX)
 
 target_include_directories(discord-rpc PRIVATE ${RapidJSON_INCLUDE_DIRS})
 
@@ -89,7 +80,7 @@ endif (NOT ${ENABLE_IO_THREAD})
 if (${BUILD_SHARED_LIBS})
     target_compile_definitions(discord-rpc PUBLIC -DDISCORD_DYNAMIC_LIB)
     target_compile_definitions(discord-rpc PRIVATE -DDISCORD_BUILDING_SDK)
-endif(${BUILD_SHARED_LIBS})
+endif (${BUILD_SHARED_LIBS})
 
 install(
     TARGETS discord-rpc
@@ -106,6 +97,15 @@ install(
 
 install(
     FILES
-        "../include/discord_rpc.h"
+        "../include/discord_rpc_shared.h"
+        "../include/discord_rpc.hpp"
     DESTINATION "include"
 )
+
+if (ENABLE_C_API)
+    install(
+        FILES
+            "../include/discord_rpc.h"
+        DESTINATION "include"
+    )
+endif (ENABLE_C_API)
