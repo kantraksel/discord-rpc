@@ -12,6 +12,7 @@ class DiscordRpcImpl : public DiscordRpc
 	EventChannel receiveChannel;
 	IoThread thread;
 	Backoff backoff;
+	bool isInitialized;
 
 	void OnConnect(JsonDocument& readyMessage);
 	void OnDisconnect(int err, const char* message);

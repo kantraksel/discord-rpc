@@ -121,6 +121,12 @@ void EventChannel::InitHandlers()
 
 void EventChannel::UpdateHandlers(const DiscordEventHandlers* newHandlers)
 {
+	if (!connection.IsOpen())
+	{
+		SetHandlers(newHandlers);
+		return;
+	}
+
 	// mutex prevents bugs related to un/subscribed events
 	std::lock_guard<std::mutex> guard(mutex);
 

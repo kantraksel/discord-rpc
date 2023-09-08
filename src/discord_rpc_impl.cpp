@@ -7,12 +7,16 @@ extern "C" DISCORD_EXPORT DiscordRpc* CreateDiscordRpc()
 
 DiscordRpcImpl::DiscordRpcImpl() : sendChannel(connection), receiveChannel(connection, sendChannel), backoff(500, 60 * 1000)
 {
-
+	isInitialized = false;
 }
 
 void DiscordRpcImpl::Initialize(const char* applicationId, const DiscordEventHandlers* handlers)
 {
 	using namespace std::placeholders;
+
+	if (isInitialized)
+		return;
+	isInitialized = true;
 
 	receiveChannel.SetHandlers(handlers);
 	connection.Initialize(applicationId, std::bind(&DiscordRpcImpl::OnConnect, this, _1), std::bind(&DiscordRpcImpl::OnDisconnect, this, _1, _2));
@@ -21,6 +25,10 @@ void DiscordRpcImpl::Initialize(const char* applicationId, const DiscordEventHan
 
 void DiscordRpcImpl::Shutdown()
 {
+	if (!isInitialized)
+		return;
+	isInitialized = false;
+
 	thread.Stop();
 	connection.Close();
 
@@ -35,12 +43,18 @@ void DiscordRpcImpl::RunCallbacks()
 
 void DiscordRpcImpl::UpdateHandlers(const DiscordEventHandlers* handlers)
 {
+	if (!isInitialized)
+		return;
+
 	receiveChannel.UpdateHandlers(handlers);
 	thread.Notify();
 }
 
 void DiscordRpcImpl::UpdatePresence(const DiscordRichPresence* presence)
 {
+	// no isInitialized check, old C API behaviour
+	// it's not queue, so it is safe
+
 	sendChannel.UpdatePresence(presence);
 	thread.Notify();
 }
@@ -52,8 +66,7 @@ void DiscordRpcImpl::ClearPresence()
 
 void DiscordRpcImpl::Respond(const char* userId, DiscordReply reply)
 {
-	// if we are not connected, let's not batch up stale messages for later
-	if (!connection.IsOpen())
+	if (!isInitialized || !connection.IsOpen())
 		return;
 
 	if (sendChannel.ReplyJoinRequest(userId, (int)reply))
@@ -62,6 +75,9 @@ void DiscordRpcImpl::Respond(const char* userId, DiscordReply reply)
 
 void DiscordRpcImpl::UpdateConnection()
 {
+	if (!isInitialized)
+		return;
+
 	if (connection.IsOpen())
 	{
 		receiveChannel.ReceiveData();
