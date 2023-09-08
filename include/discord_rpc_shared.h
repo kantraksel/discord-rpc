@@ -57,11 +57,18 @@ extern "C" {
 		void (*joinRequest)(const DiscordUser* request);
 	} DiscordEventHandlers;
 
-#define DISCORD_REPLY_NO 0
-#define DISCORD_REPLY_YES 1
-#define DISCORD_REPLY_IGNORE 2
-#define DISCORD_PARTY_PRIVATE 0
-#define DISCORD_PARTY_PUBLIC 1
+	enum DiscordReply
+	{
+		DISCORD_REPLY_NO = 0,
+		DISCORD_REPLY_YES = 1,
+		DISCORD_REPLY_IGNORE = 2,
+	};
+
+	enum DiscordPartyPrivacy
+	{
+		DISCORD_PARTY_PRIVATE = 0,
+		DISCORD_PARTY_PUBLIC = 1,
+	};
 
 #ifdef __cplusplus
 } /* extern "C" */

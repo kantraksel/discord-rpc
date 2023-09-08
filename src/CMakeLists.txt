@@ -3,6 +3,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 option(ENABLE_IO_THREAD "Runs I/O pump in separate thread. When disabled, use UpdateConnection()" ON)
 option(USE_STATIC_CRT "Use statically-linked runtime library. Windows only" OFF)
 option(ENABLE_C_API "Enables C API, needed for language bindings (e.g. C#)" ON)
+option(BUILD_SHARED_LIBS "Build as dynamic library. When disabled, build as static library" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -33,9 +34,9 @@ if (ENABLE_C_API)
 endif (ENABLE_C_API)
 
 if (WIN32)
-    if (${BUILD_SHARED_LIBS})
+    if (BUILD_SHARED_LIBS)
         set(BASE_RPC_SRC ${BASE_RPC_SRC} dllmain.cpp)
-    endif (${BUILD_SHARED_LIBS})
+    endif (BUILD_SHARED_LIBS)
     
     set(BASE_RPC_SRC ${BASE_RPC_SRC} connection_win.cpp)
     add_library(discord-rpc ${BASE_RPC_SRC})
@@ -62,9 +63,9 @@ if (UNIX)
         -Wpedantic
     )
 
-    if (${BUILD_SHARED_LIBS})
+    if (BUILD_SHARED_LIBS)
         target_compile_options(discord-rpc PRIVATE -fPIC)
-    endif (${BUILD_SHARED_LIBS})
+    endif (BUILD_SHARED_LIBS)
 
     if (APPLE)
         target_link_libraries(discord-rpc PRIVATE "-framework AppKit")
@@ -73,14 +74,14 @@ endif (UNIX)
 
 target_include_directories(discord-rpc PRIVATE ${RapidJSON_INCLUDE_DIRS})
 
-if (NOT ${ENABLE_IO_THREAD})
+if (NOT ENABLE_IO_THREAD)
     target_compile_definitions(discord-rpc PUBLIC -DDISCORD_DISABLE_IO_THREAD)
-endif (NOT ${ENABLE_IO_THREAD})
+endif (NOT ENABLE_IO_THREAD)
 
-if (${BUILD_SHARED_LIBS})
+if (BUILD_SHARED_LIBS)
     target_compile_definitions(discord-rpc PUBLIC -DDISCORD_DYNAMIC_LIB)
     target_compile_definitions(discord-rpc PRIVATE -DDISCORD_BUILDING_SDK)
-endif (${BUILD_SHARED_LIBS})
+endif (BUILD_SHARED_LIBS)
 
 install(
     TARGETS discord-rpc

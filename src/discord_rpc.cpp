@@ -12,7 +12,7 @@ void Discord_UpdateConnection(void)
 	cinstance.UpdateConnection();
 }
 
-extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId, DiscordEventHandlers* handlers)
+extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId, const DiscordEventHandlers* handlers)
 {
 	cinstance.Initialize(applicationId, handlers);
 }
@@ -32,7 +32,7 @@ extern "C" DISCORD_EXPORT void Discord_ClearPresence(void)
 	cinstance.ClearPresence();
 }
 
-extern "C" DISCORD_EXPORT void Discord_Respond(const char* userId, /* DISCORD_REPLY_ */ int reply)
+extern "C" DISCORD_EXPORT void Discord_Respond(const char* userId, enum DiscordReply reply)
 {
 	cinstance.Respond(userId, reply);
 }
@@ -42,7 +42,7 @@ extern "C" DISCORD_EXPORT void Discord_RunCallbacks(void)
 	cinstance.RunCallbacks();
 }
 
-extern "C" DISCORD_EXPORT void Discord_UpdateHandlers(DiscordEventHandlers* handlers)
+extern "C" DISCORD_EXPORT void Discord_UpdateHandlers(const DiscordEventHandlers* handlers)
 {
 	cinstance.UpdateHandlers(handlers);
 }

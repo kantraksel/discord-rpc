@@ -27,7 +27,7 @@ public:
 
 	void UpdatePresence(const DiscordRichPresence* presence) override;
 	void ClearPresence() override;
-	void Respond(const char* userId, /* DISCORD_REPLY_ */ int reply) override;
+	void Respond(const char* userId, DiscordReply reply) override;
 
 	void UpdateConnection();
 };

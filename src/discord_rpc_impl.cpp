@@ -1,6 +1,6 @@
 #include "discord_rpc_impl.h"
 
-DiscordRpc* DiscordRpc::Create()
+extern "C" DISCORD_EXPORT DiscordRpc* CreateDiscordRpc()
 {
 	return new DiscordRpcImpl();
 }
@@ -50,13 +50,13 @@ void DiscordRpcImpl::ClearPresence()
 	UpdatePresence(nullptr);
 }
 
-void DiscordRpcImpl::Respond(const char* userId, /* DISCORD_REPLY_ */ int reply)
+void DiscordRpcImpl::Respond(const char* userId, DiscordReply reply)
 {
 	// if we are not connected, let's not batch up stale messages for later
 	if (!connection.IsOpen())
 		return;
 
-	if (sendChannel.ReplyJoinRequest(userId, reply))
+	if (sendChannel.ReplyJoinRequest(userId, (int)reply))
 		thread.Notify();
 }
 
