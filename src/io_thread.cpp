@@ -1,22 +1,21 @@
 #include "io_thread.h"
 
 #ifndef DISCORD_DISABLE_IO_THREAD
-void Discord_UpdateConnection(void);
-
 IoThread::~IoThread()
 {
 	Stop();
 }
 
-void IoThread::Start()
+void IoThread::Start(UpdateFunc update)
 {
+	callback = update;
 	thread = std::jthread([&](std::stop_token token)
 	{
 		constexpr std::chrono::duration<int64_t, std::milli> maxWait{500LL};
 		std::unique_lock<std::mutex> lock(waitForIOMutex);
 		do
 		{
-			Discord_UpdateConnection();
+			callback();
 			waitForIOActivity.wait_for(lock, maxWait);
 		} while (!token.stop_requested());
 	});
@@ -48,7 +47,7 @@ IoThread::~IoThread()
 {
 }
 
-void IoThread::Start()
+void IoThread::Start(std::function<void()> update)
 {
 }
 

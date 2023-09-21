@@ -20,7 +20,7 @@ void DiscordRpcImpl::Initialize(const char* applicationId, const DiscordEventHan
 
 	receiveChannel.SetHandlers(handlers);
 	connection.Initialize(applicationId, std::bind(&DiscordRpcImpl::OnConnect, this, _1), std::bind(&DiscordRpcImpl::OnDisconnect, this, _1, _2));
-	thread.Start();
+	thread.Start(std::bind(&DiscordRpcImpl::UpdateConnection, this));
 }
 
 void DiscordRpcImpl::Shutdown()
