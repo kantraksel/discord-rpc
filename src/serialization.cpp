@@ -2,7 +2,7 @@
 #include "rapidjson/writer.h"
 
 #include "serialization.h"
-#include "discord_rpc_shared.h"
+#include "discord_rpc.hpp"
 
 class DirectStringBuffer
 {
@@ -117,11 +117,12 @@ struct WriteArray
 };
 
 template <typename T>
-void WriteOptionalString(JsonWriter& w, T& k, const char* value)
+void WriteOptionalString(JsonWriter& w, T& k, const std::string_view& value)
 {
-	if (value && value[0]) {
+	if (!value.empty())
+	{
 		w.Key(k, sizeof(T) - 1);
-		w.String(value);
+		w.String(value.data(), value.size());
 	}
 }
 
@@ -133,7 +134,7 @@ static void JsonWriteNonce(JsonWriter& writer, int nonce)
 	writer.String(nonceBuffer);
 }
 
-size_t JsonWriteRichPresenceObj(char* dest, size_t maxLen, int nonce, int pid, const DiscordRichPresence* presence)
+size_t JsonWriteRichPresenceObj(char* dest, size_t maxLen, int nonce, int pid, const CDiscordRichPresence* presence)
 {
 	JsonWriter writer(dest, maxLen);
 
@@ -175,10 +176,10 @@ size_t JsonWriteRichPresenceObj(char* dest, size_t maxLen, int nonce, int pid, c
 					}
 				}
 
-				if ((presence->largeImageKey && presence->largeImageKey[0]) ||
-					(presence->largeImageText && presence->largeImageText[0]) ||
-					(presence->smallImageKey && presence->smallImageKey[0]) ||
-					(presence->smallImageText && presence->smallImageText[0]))
+				if (!presence->largeImageKey.empty() ||
+					!presence->largeImageText.empty() ||
+					!presence->smallImageKey.empty() ||
+					!presence->smallImageText.empty())
 				{
 					WriteObject assets(writer, "assets");
 					WriteOptionalString(writer, "large_image", presence->largeImageKey);
@@ -187,7 +188,7 @@ size_t JsonWriteRichPresenceObj(char* dest, size_t maxLen, int nonce, int pid, c
 					WriteOptionalString(writer, "small_text", presence->smallImageText);
 				}
 
-				if ((presence->partyId && presence->partyId[0]) || presence->partySize ||
+				if (!presence->partyId.empty() || presence->partySize ||
 					presence->partyMax || presence->partyPrivacy)
 				{
 					WriteObject party(writer, "party");
@@ -206,9 +207,9 @@ size_t JsonWriteRichPresenceObj(char* dest, size_t maxLen, int nonce, int pid, c
 					}
 				}
 
-				if ((presence->matchSecret && presence->matchSecret[0]) ||
-					(presence->joinSecret && presence->joinSecret[0]) ||
-					(presence->spectateSecret && presence->spectateSecret[0]))
+				if (!presence->matchSecret.empty() ||
+					!presence->joinSecret.empty() ||
+					!presence->spectateSecret.empty())
 				{
 					WriteObject secrets(writer, "secrets");
 					WriteOptionalString(writer, "match", presence->matchSecret);

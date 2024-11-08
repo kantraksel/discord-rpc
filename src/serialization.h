@@ -77,9 +77,9 @@ public:
 };
 
 // object writers
-struct DiscordRichPresence;
+struct CDiscordRichPresence;
 size_t JsonWriteHandshakeObj(char* dest, size_t maxLen, int version, const char* applicationId);
-size_t JsonWriteRichPresenceObj(char* dest, size_t maxLen, int nonce, int pid, const DiscordRichPresence* presence);
+size_t JsonWriteRichPresenceObj(char* dest, size_t maxLen, int nonce, int pid, const CDiscordRichPresence* presence);
 size_t JsonWriteSubscribeCommand(char* dest, size_t maxLen, int nonce, const char* evtName);
 size_t JsonWriteUnsubscribeCommand(char* dest, size_t maxLen, int nonce, const char* evtName);
 size_t JsonWriteJoinReply(char* dest, size_t maxLen, const std::string_view& userId, int reply, int nonce);

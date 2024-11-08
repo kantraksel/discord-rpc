@@ -12,9 +12,60 @@ void Discord_UpdateConnection(void)
 	cinstance.UpdateConnection();
 }
 
+static CDiscordEventHandlers CreateHandlers(const DiscordEventHandlers& handlers)
+{
+	CDiscordEventHandlers wrapper;
+	wrapper.ready = [handlers](const CDiscordUser& user)
+		{
+			DiscordUser u{
+				user.userId.data(),
+				user.username.data(),
+				user.discriminator.data(),
+				user.avatar.data(),
+			};
+			handlers.ready(&u);
+		};
+	wrapper.disconnected = [handlers](int errorCode, const std::string_view& message)
+		{
+			handlers.disconnected(errorCode, message.data());
+		};
+	wrapper.errored = [handlers](int errorCode, const std::string_view& message)
+		{
+			handlers.errored(errorCode, message.data());
+		};
+	wrapper.joinGame = [handlers](const std::string_view& secret)
+		{
+			handlers.joinGame(secret.data());
+		};
+	wrapper.spectateGame = [handlers](const std::string_view& secret)
+		{
+			handlers.spectateGame(secret.data());
+		};
+	wrapper.joinRequest = [handlers](const CDiscordUser& user)
+		{
+			DiscordUser u{
+				user.userId.data(),
+				user.username.data(),
+				user.discriminator.data(),
+				user.avatar.data(),
+			};
+			handlers.joinRequest(&u);
+		};
+	return wrapper;
+}
+
+static CDiscordEventHandlers WrapHandlers(const DiscordEventHandlers* handlers)
+{
+	if (!handlers)
+		return {};
+	return CreateHandlers(*handlers);
+}
+
 extern "C" DISCORD_EXPORT void Discord_Initialize(const char* applicationId, const DiscordEventHandlers* handlers)
 {
-	cinstance.Initialize(applicationId, handlers);
+	if (!applicationId)
+		return;
+	cinstance.Initialize(applicationId, WrapHandlers(handlers));
 }
 
 extern "C" DISCORD_EXPORT void Discord_Shutdown(void)
@@ -24,7 +75,10 @@ extern "C" DISCORD_EXPORT void Discord_Shutdown(void)
 
 extern "C" DISCORD_EXPORT void Discord_UpdatePresence(const DiscordRichPresence* presence)
 {
-	cinstance.UpdatePresence(presence);
+	if (presence)
+		cinstance.UpdatePresence(*presence);
+	else
+		cinstance.ClearPresence();
 }
 
 extern "C" DISCORD_EXPORT void Discord_ClearPresence(void)
@@ -34,6 +88,8 @@ extern "C" DISCORD_EXPORT void Discord_ClearPresence(void)
 
 extern "C" DISCORD_EXPORT void Discord_Respond(const char* userId, enum DiscordReply reply)
 {
+	if (!userId)
+		return;
 	cinstance.Respond(userId, reply);
 }
 
@@ -44,5 +100,5 @@ extern "C" DISCORD_EXPORT void Discord_RunCallbacks(void)
 
 extern "C" DISCORD_EXPORT void Discord_UpdateHandlers(const DiscordEventHandlers* handlers)
 {
-	cinstance.UpdateHandlers(handlers);
+	cinstance.UpdateHandlers(WrapHandlers(handlers));
 }

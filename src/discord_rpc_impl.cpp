@@ -20,9 +20,9 @@ DiscordRpcImpl::~DiscordRpcImpl()
 {
 }
 
-void DiscordRpcImpl::Initialize(const char* applicationId, const DiscordEventHandlers* handlers)
+void DiscordRpcImpl::Initialize(const std::string_view& applicationId, const CDiscordEventHandlers& handlers)
 {
-	if (isInitialized || !applicationId)
+	if (isInitialized || applicationId.empty())
 		return;
 	isInitialized = true;
 
@@ -40,7 +40,7 @@ void DiscordRpcImpl::Shutdown()
 	thread.Stop();
 	connection.Close();
 
-	receiveChannel.SetHandlers(nullptr);
+	receiveChannel.SetHandlers({});
 	sendChannel.Reset();
 }
 
@@ -49,28 +49,30 @@ void DiscordRpcImpl::RunCallbacks()
 	receiveChannel.RunCallbacks();
 }
 
-void DiscordRpcImpl::UpdateHandlers(const DiscordEventHandlers* handlers)
+void DiscordRpcImpl::UpdateHandlers(const CDiscordEventHandlers& handlers)
 {
 	receiveChannel.UpdateHandlers(handlers);
 	if (isInitialized)
 		thread.Notify();
 }
 
-void DiscordRpcImpl::UpdatePresence(const DiscordRichPresence* presence)
+void DiscordRpcImpl::UpdatePresence(const CDiscordRichPresence& presence)
 {
-	sendChannel.UpdatePresence(presence);
+	sendChannel.UpdatePresence(&presence);
 	if (isInitialized)
 		thread.Notify();
 }
 
 void DiscordRpcImpl::ClearPresence()
 {
-	UpdatePresence(nullptr);
+	sendChannel.UpdatePresence(nullptr);
+	if (isInitialized)
+		thread.Notify();
 }
 
-void DiscordRpcImpl::Respond(const char* userId, DiscordReply reply)
+void DiscordRpcImpl::Respond(const std::string_view& userId, DiscordReply reply)
 {
-	if (!connection.IsOpen() || !userId)
+	if (!connection.IsOpen() || userId.empty())
 		return;
 
 	if (sendChannel.ReplyJoinRequest(userId, (int)reply))

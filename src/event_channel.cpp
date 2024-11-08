@@ -95,14 +95,11 @@ void EventChannel::ReceiveData()
 	}
 }
 
-void EventChannel::SetHandlers(const DiscordEventHandlers* newHandlers)
+void EventChannel::SetHandlers(const CDiscordEventHandlers& newHandlers)
 {
 	// used in Discord_Initialize
 	std::lock_guard<std::mutex> guard(mutex);
-	if (newHandlers)
-		handlers = *newHandlers;
-	else
-		handlers = {};
+	handlers = newHandlers;
 }
 
 void EventChannel::InitHandlers()
@@ -117,7 +114,7 @@ void EventChannel::InitHandlers()
 		sendChannel.SubscribeEvent("ACTIVITY_JOIN_REQUEST");
 }
 
-void EventChannel::UpdateHandlers(const DiscordEventHandlers* newHandlers)
+void EventChannel::UpdateHandlers(const CDiscordEventHandlers& newHandlers)
 {
 	if (!connection.IsOpen())
 	{
@@ -128,38 +125,24 @@ void EventChannel::UpdateHandlers(const DiscordEventHandlers* newHandlers)
 	// mutex prevents bugs related to un/subscribed events
 	std::lock_guard<std::mutex> guard(mutex);
 
-	if (newHandlers)
-	{
-		// register for events if not registered and handler was added
+	// register for events if not registered and handler was added
 		// deregister for events if registered and handler was removed
-		if (!handlers.joinGame && newHandlers->joinGame)
-			sendChannel.SubscribeEvent("ACTIVITY_JOIN");
-		else if (handlers.joinGame && !newHandlers->joinGame)
-			sendChannel.UnsubscribeEvent("ACTIVITY_JOIN");
+	if (!handlers.joinGame && newHandlers.joinGame)
+		sendChannel.SubscribeEvent("ACTIVITY_JOIN");
+	else if (handlers.joinGame && !newHandlers.joinGame)
+		sendChannel.UnsubscribeEvent("ACTIVITY_JOIN");
 
-		if (!handlers.spectateGame && newHandlers->spectateGame)
-			sendChannel.SubscribeEvent("ACTIVITY_SPECTATE");
-		else if (handlers.spectateGame && !newHandlers->spectateGame)
-			sendChannel.UnsubscribeEvent("ACTIVITY_SPECTATE");
+	if (!handlers.spectateGame && newHandlers.spectateGame)
+		sendChannel.SubscribeEvent("ACTIVITY_SPECTATE");
+	else if (handlers.spectateGame && !newHandlers.spectateGame)
+		sendChannel.UnsubscribeEvent("ACTIVITY_SPECTATE");
 
-		if (!handlers.joinRequest && newHandlers->joinRequest)
-			sendChannel.SubscribeEvent("ACTIVITY_JOIN_REQUEST");
-		else if (handlers.joinRequest && !newHandlers->joinRequest)
-			sendChannel.UnsubscribeEvent("ACTIVITY_JOIN_REQUEST");
+	if (!handlers.joinRequest && newHandlers.joinRequest)
+		sendChannel.SubscribeEvent("ACTIVITY_JOIN_REQUEST");
+	else if (handlers.joinRequest && !newHandlers.joinRequest)
+		sendChannel.UnsubscribeEvent("ACTIVITY_JOIN_REQUEST");
 
-		handlers = *newHandlers;
-	}
-	else
-	{
-		if (handlers.joinGame)
-			sendChannel.UnsubscribeEvent("ACTIVITY_JOIN");
-		if (handlers.spectateGame)
-			sendChannel.UnsubscribeEvent("ACTIVITY_SPECTATE");
-		if (handlers.joinRequest)
-			sendChannel.UnsubscribeEvent("ACTIVITY_JOIN_REQUEST");
-
-		handlers = {};
-	}
+	handlers = newHandlers;
 }
 
 void EventChannel::RunCallbacks()
@@ -178,35 +161,35 @@ void EventChannel::RunCallbacks()
 		if (handlers.disconnected)
 		{
 			auto args = onDisconnect.GetArgs();
-			handlers.disconnected(args.first, &args.second);
+			handlers.disconnected(args.first, args.second);
 		}
 	}
 
 	if (onConnect.Consume() && handlers.ready)
 	{
 		auto connectedUser = onConnect.GetUser();
-		DiscordUser du{
-			&connectedUser.userId,
-			&connectedUser.username,
-			&connectedUser.discriminator,
-			&connectedUser.avatar };
-		handlers.ready(&du);
+		CDiscordUser du{
+			connectedUser.userId,
+			connectedUser.username,
+			connectedUser.discriminator,
+			connectedUser.avatar };
+		handlers.ready(du);
 	}
 
 	if (onError.Consume() && handlers.errored)
 	{
 		auto args = onError.GetArgs();
-		handlers.errored(args.first, &args.second);
+		handlers.errored(args.first, args.second);
 	}
 
 	if (onJoinGame.Consume() && handlers.joinGame)
 	{
-		handlers.joinGame(&onJoinGame.GetSecret());
+		handlers.joinGame(onJoinGame.GetSecret());
 	}
 
 	if (onSpectateGame.Consume() && handlers.spectateGame)
 	{
-		handlers.spectateGame(&onSpectateGame.GetSecret());
+		handlers.spectateGame(onSpectateGame.GetSecret());
 	}
 
 	while (joinAskQueue.HavePendingSends())
@@ -214,12 +197,12 @@ void EventChannel::RunCallbacks()
 		auto req = joinAskQueue.GetNextSendMessage();
 		if (handlers.joinRequest)
 		{
-			DiscordUser du{
-				&req->userId,
-				&req->username,
-				&req->discriminator,
-				&req->avatar };
-			handlers.joinRequest(&du);
+			CDiscordUser du{
+				req->userId,
+				req->username,
+				req->discriminator,
+				req->avatar };
+			handlers.joinRequest(du);
 		}
 		joinAskQueue.CommitSend();
 	}
@@ -230,7 +213,7 @@ void EventChannel::RunCallbacks()
 		if (handlers.disconnected)
 		{
 			auto args = onDisconnect.GetArgs();
-			handlers.disconnected(args.first, &args.second);
+			handlers.disconnected(args.first, args.second);
 		}
 	}
 }

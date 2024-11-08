@@ -69,7 +69,7 @@ bool CmdChannel::ReplyJoinRequest(const std::string_view& userId, int reply)
 	return false;
 }
 
-void CmdChannel::UpdatePresence(const DiscordRichPresence* presence)
+void CmdChannel::UpdatePresence(const CDiscordRichPresence* presence)
 {
 	presenceBuff.length = JsonWriteRichPresenceObj(presenceBuff.buffer, sizeof(presenceBuff.buffer), nonce++, pid, presence);
 	presenceUpdate.Set(presenceBuff);

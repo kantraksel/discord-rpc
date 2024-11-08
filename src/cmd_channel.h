@@ -4,7 +4,7 @@
 #include "presence.h"
 
 class RpcConnection;
-struct DiscordRichPresence;
+struct CDiscordRichPresence;
 
 class CmdChannel
 {
@@ -26,5 +26,5 @@ public:
 	bool SubscribeEvent(const char* evtName);
 	bool UnsubscribeEvent(const char* evtName);
 	bool ReplyJoinRequest(const std::string_view& userId, int reply);
-	void UpdatePresence(const DiscordRichPresence* presence);
+	void UpdatePresence(const CDiscordRichPresence* presence);
 };

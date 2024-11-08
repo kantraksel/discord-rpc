@@ -12,7 +12,7 @@ class EventChannel
 	RpcConnection& connection;
 	CmdChannel& sendChannel;
 	std::mutex mutex;
-	DiscordEventHandlers handlers{};
+	CDiscordEventHandlers handlers;
 
 	ConnectEvent onConnect;
 	DisconnectEvent onDisconnect;
@@ -28,9 +28,9 @@ public:
 	void OnDisconnect(int err, const std::string_view& message);
 	void ReceiveData();
 
-	void SetHandlers(const DiscordEventHandlers* newHandlers);
+	void SetHandlers(const CDiscordEventHandlers& newHandlers);
 	void InitHandlers();
-	void UpdateHandlers(const DiscordEventHandlers* newHandlers);
+	void UpdateHandlers(const CDiscordEventHandlers& newHandlers);
 
 	void RunCallbacks();
 };

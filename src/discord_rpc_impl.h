@@ -22,15 +22,15 @@ public:
 	DiscordRpcImpl();
 	~DiscordRpcImpl() override;
 
-	void Initialize(const char* applicationId, const DiscordEventHandlers* handlers) override;
+	void Initialize(const std::string_view& applicationId, const CDiscordEventHandlers& handlers) override;
 	void Shutdown() override;
 
 	void RunCallbacks() override;
-	void UpdateHandlers(const DiscordEventHandlers* handlers) override;
+	void UpdateHandlers(const CDiscordEventHandlers& handlers) override;
 
-	void UpdatePresence(const DiscordRichPresence* presence) override;
+	void UpdatePresence(const CDiscordRichPresence& presence) override;
 	void ClearPresence() override;
-	void Respond(const char* userId, DiscordReply reply) override;
+	void Respond(const std::string_view& userId, DiscordReply reply) override;
 
 	void UpdateConnection();
 };
