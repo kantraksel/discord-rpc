@@ -1,17 +1,16 @@
-#include "discord_rpc_shared.h"
+#pragma once
+#include "discord_rpc.hpp"
 #include "msg_queue.h"
 #include "events.h"
 
-constexpr size_t JoinQueueSize{8};
-
 class RpcConnection;
-class DataChannel;
+class CmdChannel;
 class JsonDocument;
 
 class EventChannel
 {
 	RpcConnection& connection;
-	DataChannel& sendChannel;
+	CmdChannel& sendChannel;
 	std::mutex mutex;
 	DiscordEventHandlers handlers{};
 
@@ -20,13 +19,13 @@ class EventChannel
 	ErrorEvent onError;
 	JoinGameEvent onJoinGame;
 	SpectateGameEvent onSpectateGame;
-	MsgQueue<User, JoinQueueSize> joinAskQueue;
+	MsgQueue<User, 8> joinAskQueue;
 
 public:
-	EventChannel(RpcConnection& connection, DataChannel& sendChannel);
+	EventChannel(RpcConnection& connection, CmdChannel& sendChannel);
 
 	void OnConnect(JsonDocument& readyMessage);
-	void OnDisconnect(int err, const char* message);
+	void OnDisconnect(int err, const std::string_view& message);
 	void ReceiveData();
 
 	void SetHandlers(const DiscordEventHandlers* newHandlers);

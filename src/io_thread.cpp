@@ -11,7 +11,7 @@ void IoThread::Start(UpdateFunc update)
 	callback = update;
 	thread = std::jthread([&](std::stop_token token)
 	{
-		constexpr std::chrono::duration<int64_t, std::milli> maxWait{500LL};
+		constexpr std::chrono::milliseconds maxWait{500};
 		std::unique_lock<std::mutex> lock(waitForIOMutex);
 		do
 		{
@@ -33,14 +33,7 @@ void IoThread::Stop()
 
 	thread.request_stop();
 	Notify();
-
-	// may thrown even if we check joinable()
-	try
-	{
-		thread.join();
-	}
-	catch (...)
-	{}
+	thread.join();
 }
 #else
 IoThread::~IoThread()

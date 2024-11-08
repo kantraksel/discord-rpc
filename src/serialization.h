@@ -1,22 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <string_view>
 #include "rapidjson/document.h"
-
-template <size_t Len>
-inline size_t StringCopy(char (&dest)[Len], const char* src)
-{
-	if (!src || !Len)
-		return 0;
-
-	size_t copied;
-	char* out = dest;
-	for (copied = 1; *src && copied < Len; ++copied)
-	{
-		*out++ = *src++;
-	}
-	*out = 0;
-	return copied - 1;
-}
 
 // StackAllocator used to reduce heap allocations
 template <size_t Size>
@@ -72,14 +57,13 @@ using JsonDocumentBase = rapidjson::GenericDocument<UTF8, PoolAllocator, StackAl
 class JsonDocument : public JsonDocumentBase
 {
 public:
-	static const int kDefaultChunkCapacity = 32 * 1024;
+	static constexpr int kDefaultChunkCapacity = 32 * 1024;
 
 	MallocAllocator mallocAllocator;
 	PoolAllocator poolAllocator;
 	StackAllocator stackAllocator;
 
-	// use the buffer first, then allocate more; the size seems to be too big
-	char parseBuffer[32 * 1024];
+	char parseBuffer[kDefaultChunkCapacity];
 	
 	JsonDocument()
 	  : JsonDocumentBase(rapidjson::kObjectType,
@@ -98,10 +82,10 @@ size_t JsonWriteHandshakeObj(char* dest, size_t maxLen, int version, const char*
 size_t JsonWriteRichPresenceObj(char* dest, size_t maxLen, int nonce, int pid, const DiscordRichPresence* presence);
 size_t JsonWriteSubscribeCommand(char* dest, size_t maxLen, int nonce, const char* evtName);
 size_t JsonWriteUnsubscribeCommand(char* dest, size_t maxLen, int nonce, const char* evtName);
-size_t JsonWriteJoinReply(char* dest, size_t maxLen, const char* userId, int reply, int nonce);
+size_t JsonWriteJoinReply(char* dest, size_t maxLen, const std::string_view& userId, int reply, int nonce);
 
 // object property getters
-using JsonValue = rapidjson::GenericValue<UTF8>;
+using JsonValue = JsonDocument::ValueType;
 
 JsonValue* GetObjMember(JsonValue* obj, const char* name);
 int GetIntMember(JsonValue* obj, const char* name, int notFoundDefault = 0);

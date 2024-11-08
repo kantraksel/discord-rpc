@@ -7,7 +7,6 @@ struct Backoff
 	int64_t minAmount;
 	int64_t maxAmount;
 	int64_t current;
-	int fails;
 	std::chrono::system_clock::time_point nextAttempt;
 
 	std::mt19937_64 randGenerator;
@@ -18,20 +17,17 @@ struct Backoff
 	  : minAmount(min)
 	  , maxAmount(max)
 	  , current(min)
-	  , fails(0)
 	  , randGenerator(std::random_device()())
 	{
 	}
 
 	void reset()
 	{
-		fails = 0;
 		current = minAmount;
 	}
 
 	int64_t nextDelay()
 	{
-		++fails;
 		int64_t delay = (int64_t)((double)current * 2.0 * rand01());
 		current = std::min(current + delay, maxAmount);
 		return current;
@@ -42,7 +38,7 @@ struct Backoff
 		auto now = std::chrono::system_clock::now();
 		if (now >= nextAttempt)
 		{
-			nextAttempt = now + std::chrono::duration<int64_t, std::milli>{ nextDelay() };
+			nextAttempt = now + std::chrono::milliseconds{ nextDelay() };
 			return true;
 		}
 
@@ -51,6 +47,6 @@ struct Backoff
 
 	void setNewDelay()
 	{
-		nextAttempt = std::chrono::system_clock::now() + std::chrono::duration<int64_t, std::milli>{ nextDelay() };
+		nextAttempt = std::chrono::system_clock::now() + std::chrono::milliseconds{ nextDelay() };
 	}
 };

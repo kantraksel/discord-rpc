@@ -1,17 +1,18 @@
+#pragma once
 #include <atomic>
 #include <mutex>
-#include <string>
+#include "fixed_string.h"
 
 struct User
 {
 	// snowflake (64bit int), ascii decimal string (max 20 bytes)
-	char userId[21];
-	// 32 unicode glyphs is max name size => 4 bytes per glyph in the worst case
-	char username[129];
-	// 4 decimal digits + 1 null terminator
-	char discriminator[5];
+	FixedString<21> userId;
+	// name size => 32 unicode glyphs => 4 bytes per glyph in the worst case
+	FixedString<32 * 4 + 1> username;
+	// 4 decimal digits + null terminator
+	FixedString<5> discriminator;
 	// optional 'a_' + md5 hex digest (32 bytes) + null terminator
-	char avatar[35];
+	FixedString<35> avatar;
 };
 
 class ConnectEvent
@@ -45,10 +46,10 @@ class DisconnectEvent
 	std::atomic_bool awaiting{false};
 	std::mutex mutex;
 	int code{0};
-	std::string message;
+	FixedString<256> message;
 
 public:
-	inline void Set(int code, const char* message)
+	inline void Set(int code, const std::string_view& message)
 	{
 		std::lock_guard lock(mutex);
 		this->code = code;
@@ -62,7 +63,7 @@ public:
 		return awaiting.exchange(false);
 	}
 
-	inline std::pair<int, std::string> GetArgs()
+	inline std::pair<int, FixedString<256>> GetArgs()
 	{
 		std::lock_guard lock(mutex);
 		return std::make_pair(code, message);
@@ -75,7 +76,7 @@ class JoinGameEvent
 {
 	std::atomic_bool awaiting{false};
 	std::mutex mutex;
-	std::string secret;
+	FixedString<256> secret;
 
 public:
 	inline void Set(const char* secret)
@@ -90,7 +91,7 @@ public:
 		return awaiting.exchange(false);
 	}
 
-	inline std::string GetSecret()
+	inline FixedString<256> GetSecret()
 	{
 		std::lock_guard lock(mutex);
 		return secret;

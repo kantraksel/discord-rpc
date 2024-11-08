@@ -1,6 +1,7 @@
+#pragma once
 #include "discord_rpc.hpp"
 #include "rpc_connection.h"
-#include "data_channel.h"
+#include "cmd_channel.h"
 #include "event_channel.h"
 #include "io_thread.h"
 #include "backoff.h"
@@ -8,17 +9,18 @@
 class DiscordRpcImpl : public DiscordRpc
 {
 	RpcConnection connection;
-	DataChannel sendChannel;
+	CmdChannel sendChannel;
 	EventChannel receiveChannel;
 	IoThread thread;
 	Backoff backoff;
 	bool isInitialized;
 
 	void OnConnect(JsonDocument& readyMessage);
-	void OnDisconnect(int err, const char* message);
+	void OnDisconnect(int err, const std::string_view& message);
 
 public:
 	DiscordRpcImpl();
+	~DiscordRpcImpl() override;
 
 	void Initialize(const char* applicationId, const DiscordEventHandlers* handlers) override;
 	void Shutdown() override;

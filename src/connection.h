@@ -19,6 +19,6 @@ struct BaseConnection
 	bool Open();
 	void Close();
 
-	virtual bool Write(const void* data, size_t length);
+	bool Write(const void* data, size_t length);
 	bool Read(void* data, size_t length);
 };

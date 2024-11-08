@@ -1,34 +1,33 @@
 #include "rpc_connection.h"
-#include "data_channel.h"
+#include "cmd_channel.h"
 #include "event_channel.h"
 #include "serialization.h"
 
-EventChannel::EventChannel(RpcConnection& connection, DataChannel& sendChannel) : connection(connection), sendChannel(sendChannel)
+EventChannel::EventChannel(RpcConnection& connection, CmdChannel& sendChannel) : connection(connection), sendChannel(sendChannel)
 {
-
 }
 
 static bool DeserializeUser(JsonValue* data, User& connectedUser)
 {
-	auto user = GetObjMember(data, "user");
+	auto* user = GetObjMember(data, "user");
 	if (!user)
 		return false;
 
-	auto userId = GetStrMember(user, "id");
-	auto username = GetStrMember(user, "username");
+	auto* userId = GetStrMember(user, "id");
+	auto* username = GetStrMember(user, "username");
 	if (userId && username)
 	{
-		StringCopy(connectedUser.userId, userId);
-		StringCopy(connectedUser.username, username);
-		auto discriminator = GetStrMember(user, "discriminator");
+		connectedUser.userId = userId;
+		connectedUser.username = username;
+		auto* discriminator = GetStrMember(user, "discriminator");
 		if (discriminator)
-			StringCopy(connectedUser.discriminator, discriminator);
+			connectedUser.discriminator = discriminator;
 
-		auto avatar = GetStrMember(user, "avatar");
+		auto* avatar = GetStrMember(user, "avatar");
 		if (avatar)
-			StringCopy(connectedUser.avatar, avatar);
+			connectedUser.avatar = avatar;
 		else
-			connectedUser.avatar[0] = 0;
+			connectedUser.avatar.clear();
 
 		return true;
 	}
@@ -53,7 +52,7 @@ void EventChannel::OnConnect(JsonDocument& readyMessage)
 	onConnect.Set(connectedUser);
 }
 
-void EventChannel::OnDisconnect(int err, const char* message)
+void EventChannel::OnDisconnect(int err, const std::string_view& message)
 {
 	onDisconnect.Set(err, message);
 }
@@ -66,25 +65,24 @@ void EventChannel::ReceiveData()
 		if (!connection.Read(message))
 			break;
 
-		const char* evtName = GetStrMember(&message, "evt");
+		auto* evtName = GetStrMember(&message, "evt");
 		auto* data = GetObjMember(&message, "data");
 
 		if (!evtName || !data)
 			continue;
-
 		std::string_view eventName = evtName;
 
 		if (eventName == "ERROR")
 			onError.Set(GetIntMember(data, "code"), GetStrMember(data, "message", ""));
 		else if (eventName == "ACTIVITY_JOIN")
 		{
-			auto secret = GetStrMember(data, "secret");
+			auto* secret = GetStrMember(data, "secret");
 			if (secret)
 				onJoinGame.Set(secret);
 		}
 		else if (eventName == "ACTIVITY_SPECTATE")
 		{
-			auto secret = GetStrMember(data, "secret");
+			auto* secret = GetStrMember(data, "secret");
 			if (secret)
 				onSpectateGame.Set(secret);
 		}
@@ -180,48 +178,35 @@ void EventChannel::RunCallbacks()
 		if (handlers.disconnected)
 		{
 			auto args = onDisconnect.GetArgs();
-			handlers.disconnected(args.first, args.second.c_str());
+			handlers.disconnected(args.first, &args.second);
 		}
 	}
 
-	if (onConnect.Consume())
+	if (onConnect.Consume() && handlers.ready)
 	{
-		if (handlers.ready)
-		{
-			auto connectedUser = onConnect.GetUser();
-			DiscordUser du{ connectedUser.userId,
-						   connectedUser.username,
-						   connectedUser.discriminator,
-						   connectedUser.avatar };
-			handlers.ready(&du);
-		}
+		auto connectedUser = onConnect.GetUser();
+		DiscordUser du{
+			&connectedUser.userId,
+			&connectedUser.username,
+			&connectedUser.discriminator,
+			&connectedUser.avatar };
+		handlers.ready(&du);
 	}
 
-	if (onError.Consume())
+	if (onError.Consume() && handlers.errored)
 	{
-		if (handlers.errored)
-		{
-			auto args = onError.GetArgs();
-			handlers.errored(args.first, args.second.c_str());
-		}
+		auto args = onError.GetArgs();
+		handlers.errored(args.first, &args.second);
 	}
 
-	if (onJoinGame.Consume())
+	if (onJoinGame.Consume() && handlers.joinGame)
 	{
-		if (handlers.joinGame)
-		{
-			auto secret = onJoinGame.GetSecret();
-			handlers.joinGame(secret.c_str());
-		}
+		handlers.joinGame(&onJoinGame.GetSecret());
 	}
 
-	if (onSpectateGame.Consume())
+	if (onSpectateGame.Consume() && handlers.spectateGame)
 	{
-		if (handlers.spectateGame)
-		{
-			auto secret = onSpectateGame.GetSecret();
-			handlers.spectateGame(secret.c_str());
-		}
+		handlers.spectateGame(&onSpectateGame.GetSecret());
 	}
 
 	while (joinAskQueue.HavePendingSends())
@@ -229,7 +214,11 @@ void EventChannel::RunCallbacks()
 		auto req = joinAskQueue.GetNextSendMessage();
 		if (handlers.joinRequest)
 		{
-			DiscordUser du{ req->userId, req->username, req->discriminator, req->avatar };
+			DiscordUser du{
+				&req->userId,
+				&req->username,
+				&req->discriminator,
+				&req->avatar };
 			handlers.joinRequest(&du);
 		}
 		joinAskQueue.CommitSend();
@@ -241,7 +230,7 @@ void EventChannel::RunCallbacks()
 		if (handlers.disconnected)
 		{
 			auto args = onDisconnect.GetArgs();
-			handlers.disconnected(args.first, args.second.c_str());
+			handlers.disconnected(args.first, &args.second);
 		}
 	}
 }

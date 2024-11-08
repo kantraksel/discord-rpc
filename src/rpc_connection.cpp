@@ -4,29 +4,40 @@
 
 constexpr int RpcVersion = 1;
 
-void RpcConnection::Initialize(const char* applicationId, OnConnect onConnect, OnDisconnect onDisconnect)
+void RpcConnection::SetEvents(OnConnect onConnect, OnDisconnect onDisconnect)
 {
-	StringCopy(appId, applicationId);
 	this->onConnect = onConnect;
 	this->onDisconnect = onDisconnect;
 }
 
+void RpcConnection::SetApplicationId(const std::string_view& id)
+{
+	appId = id;
+}
+
 void RpcConnection::Open()
 {
-	if (state == State::Connected)
-		return;
+	if (state == State::Disconnected)
+	{
+		if (!connection.Open())
+			return;
 
-	if (state == State::Disconnected && !connection.Open())
-		return;
+		frame.opcode = Opcode::Handshake;
+		frame.length = (uint32_t)JsonWriteHandshakeObj(frame.message, sizeof(frame.message), RpcVersion, &appId);
 
-	if (state == State::SentHandshake)
+		if (connection.Write(&frame, sizeof(MessageFrameHeader) + frame.length))
+			state = State::Connecting;
+		else
+			Close();
+	}
+	else if (state == State::Connecting)
 	{
 		JsonDocument message;
 		if (Read(message))
 		{
 			auto cmd = GetStrMember(&message, "cmd");
 			auto evt = GetStrMember(&message, "evt");
-			if (cmd && evt && !strcmp(cmd, "DISPATCH") && !strcmp(evt, "READY"))
+			if (cmd && evt && strcmp(cmd, "DISPATCH") == 0 && strcmp(evt, "READY") == 0)
 			{
 				state = State::Connected;
 				if (onConnect)
@@ -34,24 +45,17 @@ void RpcConnection::Open()
 			}
 		}
 	}
-	else
-	{
-		frame.opcode = Opcode::Handshake;
-		frame.length = (uint32_t)JsonWriteHandshakeObj(frame.message, sizeof(frame.message), RpcVersion, appId);
-
-		if (connection.Write(&frame, sizeof(MessageFrameHeader) + frame.length))
-			state = State::SentHandshake;
-		else Close();
-	}
 }
 
 void RpcConnection::Close()
 {
-	if (onDisconnect && state != State::Disconnected)
+	if (state != State::Disconnected && onDisconnect)
 		onDisconnect(lastErrorCode, lastErrorMessage);
 
 	connection.Close();
 	state = State::Disconnected;
+	lastErrorCode = (int)ErrorCode::Success;
+	lastErrorMessage.clear();
 }
 
 bool RpcConnection::Write(const void* data, size_t length)
@@ -83,7 +87,7 @@ bool RpcConnection::Read(JsonDocument& message)
 			if (!connection.isOpen)
 			{
 				lastErrorCode = (int)ErrorCode::PipeClosed;
-				StringCopy(lastErrorMessage, "Pipe closed");
+				lastErrorMessage = "Pipe closed";
 				Close();
 			}
 			return false;
@@ -94,7 +98,7 @@ bool RpcConnection::Read(JsonDocument& message)
 			if (!connection.Read(frame.message, frame.length))
 			{
 				lastErrorCode = (int)ErrorCode::ReadCorrupt;
-				StringCopy(lastErrorMessage, "Partial data in frame");
+				lastErrorMessage = "Partial data in frame";
 				Close();
 				return false;
 			}
@@ -103,35 +107,35 @@ bool RpcConnection::Read(JsonDocument& message)
 
 		switch (frame.opcode)
 		{
-		case Opcode::Close:
-		{
-			message.ParseInsitu(frame.message);
-			lastErrorCode = GetIntMember(&message, "code");
-			StringCopy(lastErrorMessage, GetStrMember(&message, "message", ""));
-			Close();
-			return false;
-		}
-
-		case Opcode::Frame:
-			message.ParseInsitu(frame.message);
-			return true;
-
-		case Opcode::Ping:
-			frame.opcode = Opcode::Pong;
-			if (!connection.Write(&frame, sizeof(MessageFrameHeader) + frame.length))
+			case Opcode::Close:
+			{
+				message.ParseInsitu(frame.message);
+				lastErrorCode = GetIntMember(&message, "code");
+				lastErrorMessage = GetStrMember(&message, "message", "");
 				Close();
-			break;
+				return false;
+			}
 
-		case Opcode::Pong:
-			break;
+			case Opcode::Frame:
+				message.ParseInsitu(frame.message);
+				return true;
 
-		case Opcode::Handshake:
-		default:
-			// something bad happened
-			lastErrorCode = (int)ErrorCode::ReadCorrupt;
-			StringCopy(lastErrorMessage, "Bad ipc frame");
-			Close();
-			return false;
+			case Opcode::Ping:
+				frame.opcode = Opcode::Pong;
+				if (!connection.Write(&frame, sizeof(MessageFrameHeader) + frame.length))
+					Close();
+				break;
+
+			case Opcode::Pong:
+				break;
+
+			case Opcode::Handshake:
+			default:
+				// something bad happened
+				lastErrorCode = (int)ErrorCode::ReadCorrupt;
+				lastErrorMessage = "Bad ipc frame";
+				Close();
+				return false;
 		}
 	}
 }

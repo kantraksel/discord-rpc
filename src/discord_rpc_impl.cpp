@@ -5,21 +5,29 @@ extern "C" DISCORD_EXPORT DiscordRpc* CreateDiscordRpc()
 	return new DiscordRpcImpl();
 }
 
+DiscordRpc::~DiscordRpc()
+{
+}
+
 DiscordRpcImpl::DiscordRpcImpl() : sendChannel(connection), receiveChannel(connection, sendChannel), backoff(500, 60 * 1000)
 {
+	using namespace std::placeholders;
+	connection.SetEvents(std::bind(&DiscordRpcImpl::OnConnect, this, _1), std::bind(&DiscordRpcImpl::OnDisconnect, this, _1, _2));
 	isInitialized = false;
+}
+
+DiscordRpcImpl::~DiscordRpcImpl()
+{
 }
 
 void DiscordRpcImpl::Initialize(const char* applicationId, const DiscordEventHandlers* handlers)
 {
-	using namespace std::placeholders;
-
-	if (isInitialized)
+	if (isInitialized || !applicationId)
 		return;
 	isInitialized = true;
 
 	receiveChannel.SetHandlers(handlers);
-	connection.Initialize(applicationId, std::bind(&DiscordRpcImpl::OnConnect, this, _1), std::bind(&DiscordRpcImpl::OnDisconnect, this, _1, _2));
+	connection.SetApplicationId(applicationId);
 	thread.Start(std::bind(&DiscordRpcImpl::UpdateConnection, this));
 }
 
@@ -43,20 +51,16 @@ void DiscordRpcImpl::RunCallbacks()
 
 void DiscordRpcImpl::UpdateHandlers(const DiscordEventHandlers* handlers)
 {
-	if (!isInitialized)
-		return;
-
 	receiveChannel.UpdateHandlers(handlers);
-	thread.Notify();
+	if (isInitialized)
+		thread.Notify();
 }
 
 void DiscordRpcImpl::UpdatePresence(const DiscordRichPresence* presence)
 {
-	// no isInitialized check, old C API behaviour
-	// it's not queue, so it is safe
-
 	sendChannel.UpdatePresence(presence);
-	thread.Notify();
+	if (isInitialized)
+		thread.Notify();
 }
 
 void DiscordRpcImpl::ClearPresence()
@@ -66,7 +70,7 @@ void DiscordRpcImpl::ClearPresence()
 
 void DiscordRpcImpl::Respond(const char* userId, DiscordReply reply)
 {
-	if (!isInitialized || !connection.IsOpen())
+	if (!connection.IsOpen() || !userId)
 		return;
 
 	if (sendChannel.ReplyJoinRequest(userId, (int)reply))
@@ -91,11 +95,10 @@ void DiscordRpcImpl::OnConnect(JsonDocument& readyMessage)
 {
 	receiveChannel.InitHandlers();
 	receiveChannel.OnConnect(readyMessage);
-
 	backoff.reset();
 }
 
-void DiscordRpcImpl::OnDisconnect(int err, const char* message)
+void DiscordRpcImpl::OnDisconnect(int err, const std::string_view& message)
 {
 	receiveChannel.OnDisconnect(err, message);
 	backoff.setNewDelay();

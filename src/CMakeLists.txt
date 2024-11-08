@@ -23,10 +23,11 @@ set(BASE_RPC_SRC
     io_thread.cpp
     events.h
     presence.h
-    data_channel.h
-    data_channel.cpp
+    cmd_channel.h
+    cmd_channel.cpp
     event_channel.h
     event_channel.cpp
+    fixed_string.h
 )
 
 if (ENABLE_C_API)

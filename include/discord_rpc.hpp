@@ -1,8 +1,11 @@
+#pragma once
 #include "discord_rpc_shared.h"
 
 class DiscordRpc
 {
 public:
+	virtual ~DiscordRpc() = 0;
+
 	virtual void Initialize(const char* applicationId, const DiscordEventHandlers* handlers) = 0;
 	virtual void Shutdown() = 0;
 

@@ -1,13 +1,13 @@
-#include "data_channel.h"
+#include "cmd_channel.h"
 #include "rpc_connection.h"
 #include "serialization.h"
 
-DataChannel::DataChannel(RpcConnection& connection) : connection(connection)
+CmdChannel::CmdChannel(RpcConnection& connection) : connection(connection)
 {
 	pid = GetProcessId();
 }
 
-void DataChannel::Reset()
+void CmdChannel::Reset()
 {
 	presenceUpdate.Reset();
 	presenceBuff.length = 0;
@@ -16,7 +16,7 @@ void DataChannel::Reset()
 		sendQueue.CommitSend();
 }
 
-void DataChannel::SendData()
+void CmdChannel::SendData()
 {
 	if (presenceUpdate.Consume())
 	{
@@ -27,15 +27,15 @@ void DataChannel::SendData()
 
 	while (sendQueue.HavePendingSends())
 	{
-		auto qmessage = sendQueue.GetNextSendMessage();
+		auto* qmessage = sendQueue.GetNextSendMessage();
 		connection.Write(qmessage->buffer, qmessage->length);
 		sendQueue.CommitSend();
 	}
 }
 
-bool DataChannel::SubscribeEvent(const char* evtName)
+bool CmdChannel::SubscribeEvent(const char* evtName)
 {
-	auto qmessage = sendQueue.GetNextAddMessage();
+	auto* qmessage = sendQueue.GetNextAddMessage();
 	if (qmessage)
 	{
 		qmessage->length = JsonWriteSubscribeCommand(qmessage->buffer, sizeof(qmessage->buffer), nonce++, evtName);
@@ -45,9 +45,9 @@ bool DataChannel::SubscribeEvent(const char* evtName)
 	return false;
 }
 
-bool DataChannel::UnsubscribeEvent(const char* evtName)
+bool CmdChannel::UnsubscribeEvent(const char* evtName)
 {
-	auto qmessage = sendQueue.GetNextAddMessage();
+	auto* qmessage = sendQueue.GetNextAddMessage();
 	if (qmessage)
 	{
 		qmessage->length = JsonWriteUnsubscribeCommand(qmessage->buffer, sizeof(qmessage->buffer), nonce++, evtName);
@@ -57,9 +57,9 @@ bool DataChannel::UnsubscribeEvent(const char* evtName)
 	return false;
 }
 
-bool DataChannel::ReplyJoinRequest(const char* userId, int reply)
+bool CmdChannel::ReplyJoinRequest(const std::string_view& userId, int reply)
 {
-	auto qmessage = sendQueue.GetNextAddMessage();
+	auto* qmessage = sendQueue.GetNextAddMessage();
 	if (qmessage)
 	{
 		qmessage->length = JsonWriteJoinReply(qmessage->buffer, sizeof(qmessage->buffer), userId, reply, nonce++);
@@ -69,7 +69,7 @@ bool DataChannel::ReplyJoinRequest(const char* userId, int reply)
 	return false;
 }
 
-void DataChannel::UpdatePresence(const DiscordRichPresence* presence)
+void CmdChannel::UpdatePresence(const DiscordRichPresence* presence)
 {
 	presenceBuff.length = JsonWriteRichPresenceObj(presenceBuff.buffer, sizeof(presenceBuff.buffer), nonce++, pid, presence);
 	presenceUpdate.Set(presenceBuff);

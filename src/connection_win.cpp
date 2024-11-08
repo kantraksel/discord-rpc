@@ -1,6 +1,5 @@
 #include "connection.h"
 
-#include <string>
 #define WIN32_LEAN_AND_MEAN
 #define NOMCX
 #define NOSERVICE
@@ -44,6 +43,8 @@ bool BaseConnection::Open()
 				(*pipeDigit)++;
 				continue;
 			}
+			else
+				return false;
 		}
 		else if (lastError == ERROR_PIPE_BUSY)
 			if (WaitNamedPipeW(pipeName, 10000))

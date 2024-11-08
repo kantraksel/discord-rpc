@@ -278,7 +278,7 @@ size_t JsonWriteUnsubscribeCommand(char* dest, size_t maxLen, int nonce, const c
 	return writer.Size();
 }
 
-size_t JsonWriteJoinReply(char* dest, size_t maxLen, const char* userId, int reply, int nonce)
+size_t JsonWriteJoinReply(char* dest, size_t maxLen, const std::string_view& userId, int reply, int nonce)
 {
 	JsonWriter writer(dest, maxLen);
 
@@ -296,7 +296,7 @@ size_t JsonWriteJoinReply(char* dest, size_t maxLen, const char* userId, int rep
 			WriteObject args(writer);
 
 			WriteKey(writer, "user_id");
-			writer.String(userId);
+			writer.String(userId.data(), userId.size());
 		}
 
 		JsonWriteNonce(writer, nonce);
