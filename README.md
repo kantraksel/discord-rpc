@@ -35,7 +35,7 @@ Requirements:
 - C++ compiler with C++20 support
 - RapidJSON (prefer latest commits)
 
-Create new project, copy `src` and `include` directories, add files inside them to the projects. Remember to set C++ to C++20 and link the project to your app project. If you choose to link runtime library statically, define `DISCORD_DISABLE_IO_THREAD` as project macro and before including header.
+Create new project, copy `src` and `include` directories, add files inside them to the projects. Remember to set C++ to C++20 and link the project to your app project.
 
 You need to either download RapidJSON via your favourite package manager or import it from [the repo](https://github.com/Tencent/rapidjson) in similar way you imported Discord RPC.
 
