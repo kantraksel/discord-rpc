@@ -122,7 +122,7 @@ void WriteOptionalString(JsonWriter& w, T& k, const std::string_view& value)
 	if (!value.empty())
 	{
 		w.Key(k, sizeof(T) - 1);
-		w.String(value.data(), value.size());
+		w.String(value.data(), (uint32_t)value.size());
 	}
 }
 
@@ -297,7 +297,7 @@ size_t JsonWriteJoinReply(char* dest, size_t maxLen, const std::string_view& use
 			WriteObject args(writer);
 
 			WriteKey(writer, "user_id");
-			writer.String(userId.data(), userId.size());
+			writer.String(userId.data(), (uint32_t)userId.size());
 		}
 
 		JsonWriteNonce(writer, nonce);
